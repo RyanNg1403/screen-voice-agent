@@ -13,6 +13,7 @@ type ToggleKey =
   | "privacy.screen_read"
   | "privacy.voice_input"
   | "privacy.computer_use"
+  | "privacy.bypass_approvals"
   | "privacy.local_time"
   | "privacy.location";
 
@@ -176,6 +177,24 @@ export function SettingsPanel({ visible, prefs, onToggle, onResetPrefs, onClose 
             <div
               className={`settings-switch ${prefs["privacy.computer_use"] ? "settings-switch-on" : ""}`}
               onClick={() => onToggle("privacy.computer_use")}
+            >
+              <div className="settings-switch-thumb" />
+            </div>
+          </label>
+
+          <label className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Bypass Approval Prompts (YOLO)</span>
+              <span className="settings-toggle-desc">
+                Auto-approve actions without asking — Samuel can click, type, run
+                tools, and read/write files unprompted. It still asks before
+                turning on a NEW capability it doesn't have yet (continuous screen
+                watch / ambient audio listening). Use with care.
+              </span>
+            </div>
+            <div
+              className={`settings-switch ${prefs["privacy.bypass_approvals"] ? "settings-switch-on" : ""}`}
+              onClick={() => onToggle("privacy.bypass_approvals")}
             >
               <div className="settings-switch-thumb" />
             </div>

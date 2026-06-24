@@ -176,6 +176,13 @@ const SCHEMA: Record<string, PropSchema> = {
     type: "boolean", default: false,
     aliases: ["privacy.desktop_automation", "privacy.cua", "privacy.automation"],
   },
+  // YOLO mode: when on, the per-action approval prompts (needsApproval tools)
+  // are auto-approved instead of asking. The master capability toggles above
+  // and macOS system permissions still apply. Default OFF.
+  "privacy.bypass_approvals": {
+    type: "boolean", default: false,
+    aliases: ["privacy.skip_approvals", "privacy.yolo", "privacy.auto_approve"],
+  },
   "privacy.local_time": {
     type: "boolean", default: false,
     aliases: ["privacy.local_time_enabled", "privacy.time"],

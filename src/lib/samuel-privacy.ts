@@ -69,6 +69,23 @@ export const privacy = {
     return readBool("privacy.computer_use", true);
   },
   /**
+   * YOLO / bypass mode: when true, per-action approval prompts are
+   * auto-approved instead of asking. Master capability toggles (canReadScreen,
+   * canControlComputer, …) and macOS system permissions still apply — this
+   * only silences the in-the-moment "may I do X?" cards. Default OFF.
+   */
+  bypassApprovals(): boolean {
+    return readBool("privacy.bypass_approvals", false);
+  },
+  /** Proactive screen watching (continuous observation + watcher). Default OFF. */
+  canWatchScreen(): boolean {
+    return readBool("privacy.screen_watch", false);
+  },
+  /** Proactive ambient audio listening (rolling system-audio buffer). Default OFF. */
+  canListenAmbient(): boolean {
+    return readBool("privacy.audio_listen", false);
+  },
+  /**
    * Knowledge of the user's local time + IANA timezone. Default OFF —
    * opt-in. When off:
    *   - Session-boot inject in useRealtime.ts sends UTC instead of local time.

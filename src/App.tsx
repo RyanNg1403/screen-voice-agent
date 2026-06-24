@@ -88,12 +88,15 @@ export default function App() {
     | "privacy.screen_read"
     | "privacy.voice_input"
     | "privacy.computer_use"
+    | "privacy.bypass_approvals"
     | "privacy.local_time"
     | "privacy.location"
   ) => {
     const current = ui.prefs[key];
     const prop = key.split(".")[1];
-    if (!current) {
+    // bypass_approvals is an app-behavior toggle, not an OS capability, so it
+    // skips the macOS consent dialog. All other OFF->ON transitions request it.
+    if (!current && key !== "privacy.bypass_approvals") {
       const { allowed } = await invoke<{ allowed: boolean }>(
         "request_privacy_consent",
         { key },

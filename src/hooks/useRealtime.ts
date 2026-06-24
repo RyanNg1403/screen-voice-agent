@@ -1528,6 +1528,23 @@ export function useRealtime(): UseRealtimeReturn {
     session.on("tool_approval_requested", (_ctx, _agent, request) => {
       if (request.type === "function_approval") {
         const toolName = request.tool.name;
+
+        // Bypass / YOLO mode: auto-approve actions without surfacing a card —
+        // EXCEPT capability-granting tools that persist a privacy pref. Those
+        // still prompt unless the capability is already granted, so bypass can
+        // never become a backdoor that silently enables screen/audio capture.
+        if (privacy.bypassApprovals()) {
+          const wouldGrantNewCapability =
+            (toolName === "set_screen_observation" && !privacy.canWatchScreen()) ||
+            (toolName === "listen_in_background" && !privacy.canListenAmbient());
+          if (!wouldGrantNewCapability) {
+            console.log(`[approval] bypass on — auto-approving '${toolName}'`);
+            session.approve(request.approvalItem).catch(() => {});
+            return;
+          }
+          console.log(`[approval] bypass on but '${toolName}' would grant a new capability — prompting`);
+        }
+
         console.log(`[approval] tool '${toolName}' needs approval`);
 
         const entryId = String(++entryCounter);
