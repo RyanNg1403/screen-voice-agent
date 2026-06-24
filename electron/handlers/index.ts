@@ -43,6 +43,7 @@ const handlers: Record<string, (args: A) => Promise<unknown>> = {
 
 	capture_active_window: (a) => capture.capture_active_window(a as never),
 	get_frontmost_app: () => capture.get_frontmost_app(),
+	snapshot_user_facing_app: async () => capture.snapshot_user_facing_app(),
 	capture_if_changed: () => capture.capture_if_changed(),
 	capture_screen_now: () => capture.capture_screen_now(),
 	capture_all_displays: () => capture.capture_all_displays(),

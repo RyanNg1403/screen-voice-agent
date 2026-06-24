@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { getUserFacingTargetApp } from "./capture";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -63,7 +64,24 @@ export async function read_app_content(args: {
 		}
 	}
 
-	// No specific app — read top visible apps (Codex reads all visible apps)
+	// No specific app — target the app the user is actually focused on (real
+	// frontmost → speech-start snapshot), not a dump of the top visible apps,
+	// which buried the focused window among Chrome/Ghostty/etc and left the
+	// model unable to tell what was focused. `multi` still reads several apps.
+	if (!args.multi) {
+		const focused = getUserFacingTargetApp();
+		if (focused) {
+			try {
+				const content = execFileSync(helperPath, ["--app", focused], { encoding: "utf-8" });
+				console.error(`[ax-tree] read focused app ${focused} (${content.length} chars)`);
+				return content;
+			} catch {
+				// fall through to the visible-apps read below
+			}
+		}
+	}
+
+	// Fallback (or multi mode): read top visible apps.
 	const apps = getVisibleApps(args.multi ? 4 : 3);
 	if (apps.length === 0) {
 		return execFileSync(helperPath, [], { encoding: "utf-8" });

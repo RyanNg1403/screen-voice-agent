@@ -235,7 +235,16 @@ function captureFocusedWindowSync(): { base64: string; app_name: string } {
 
 	tryRemove(tmpPng);
 
-	const target = getUserFacingApp() ?? "";
+	// Resolve the focused app the same way the main capture path does (real
+	// frontmost → speech-start snapshot → legacy heuristic), so the watcher
+	// screenshots the app the user is actually on, not an arbitrary visible one.
+	let target = "";
+	try {
+		const { getUserFacingTargetApp } = require("./capture.js") as { getUserFacingTargetApp(): string | null };
+		target = getUserFacingTargetApp() ?? "";
+	} catch {
+		target = getUserFacingApp() ?? "";
+	}
 	let displayIdx = 1;
 	try {
 		const { get_default_display } = require("./capture.js") as { get_default_display(): number };

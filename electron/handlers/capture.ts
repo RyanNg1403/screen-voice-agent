@@ -131,6 +131,44 @@ export async function get_frontmost_app(): Promise<{ app: string }> {
 	return { app: getFrontmostAppName() };
 }
 
+// Snapshot of the user's real frontmost app, refreshed at each speech-start
+// (before Samuel/Electron can steal focus). The implicit capture target reads
+// this instead of the unordered "first visible app" heuristic, which picked an
+// arbitrary visible window rather than the one the user was actually on.
+let lastUserFacingApp: string | null = null;
+
+function isExcludedApp(name: string): boolean {
+	const lower = name.toLowerCase();
+	return EXCLUDED_APPS.some((ex) => lower.includes(ex));
+}
+
+// Called via IPC on every speech_started: record the current frontmost app if
+// it's a real user-facing one, so capture can target the app the user was on
+// when they spoke — not whatever is frontmost by the time the model acts.
+export function snapshot_user_facing_app(): { app: string | null } {
+	const front = getFrontmostAppName();
+	if (front && !isExcludedApp(front)) {
+		lastUserFacingApp = front;
+	}
+	return { app: lastUserFacingApp };
+}
+
+// Resolve the implicit capture target: real frontmost first, then the most
+// recent speech-start snapshot, then the legacy visible-list heuristic.
+function resolveImplicitTargetApp(): string | null {
+	const front = getFrontmostAppName();
+	if (front && !isExcludedApp(front)) return front;
+	if (lastUserFacingApp) return lastUserFacingApp;
+	return getUserFacingApp();
+}
+
+// Public accessor so other handlers (e.g. read_app) resolve the implicit target
+// the same way the screenshot path does: real frontmost → speech-start snapshot
+// → legacy heuristic. Keeps "what app am I on" consistent across tools.
+export function getUserFacingTargetApp(): string | null {
+	return resolveImplicitTargetApp();
+}
+
 function findDisplayForApp(app: string): number | null {
 	const posScript = `tell application "System Events"
   try
@@ -388,7 +426,7 @@ function captureFocusedWindow(
 
 	if (requestedApp !== undefined && requestedApp !== null) {
 		if (!requestedApp) {
-			targetApp = getUserFacingApp();
+			targetApp = resolveImplicitTargetApp();
 		} else {
 			// Find a visible app matching the requested name
 			const script = `tell application "System Events"
@@ -415,7 +453,7 @@ end tell`;
 			}
 		}
 	} else {
-		targetApp = getUserFacingApp();
+		targetApp = resolveImplicitTargetApp();
 	}
 
 	const appLabel = targetApp ?? requestedApp ?? "Desktop";

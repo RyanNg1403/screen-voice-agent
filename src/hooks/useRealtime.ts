@@ -1721,6 +1721,10 @@ export function useRealtime(): UseRealtimeReturn {
       switch (type) {
         case "input_audio_buffer.speech_started": {
           debugLog("turn", "speech_started");
+          // Snapshot the user's real frontmost app NOW, before Samuel or any
+          // approval UI can take focus, so observe_screen targets the app the
+          // user was actually on. Fire-and-forget — never block the turn.
+          invoke("snapshot_user_facing_app").catch(() => {});
           // Bump turn counter — any in-flight per-turn async work (e.g.
           // continuous-mode screen capture) can use this to detect that
           // a newer utterance has started and abandon stale work.
@@ -2365,6 +2369,23 @@ export function useRealtime(): UseRealtimeReturn {
 
       // Inject AEC-enabled mic stream before connecting.
       // The SDK reads transport.options.mediaStream during connect().
+      // Refresh the stream when it's absent or its tracks were ended by a
+      // prior session.close(): reusing a dead stream makes every 2nd+ connect
+      // deaf (no speech_started) until a full app restart re-acquires it.
+      const cachedStream = micStreamRef.current ? await micStreamRef.current : undefined;
+      const micLive = !!cachedStream && cachedStream.getAudioTracks().some((t) => t.readyState === "live");
+      if (!micLive) {
+        micStreamRef.current = navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        }).catch((e) => {
+          console.warn("[session] mic request failed, will use SDK default:", e);
+          return undefined;
+        });
+      }
       if (micStreamRef.current) {
         const aecStream = await micStreamRef.current;
         if (aecStream) {
@@ -2513,9 +2534,13 @@ export function useRealtime(): UseRealtimeReturn {
   const disconnect = useCallback(() => {
     stopKeepalive();
     contextRef.current = [];
-    registerSendImage(null);
-    registerScreenTarget(null);
-    registerSetScreenObservation(null);
+    // Do NOT null the screen bridges here. They're registered once in the
+    // mount effect and closure over the persistent session (reused across
+    // reconnects); connect() never re-registers them. Nulling on disconnect
+    // left every 2nd+ session with a dead bridge — "bridge not registered" on
+    // continuous watch, and broken observe_screen. Tools only fire during a
+    // live session, so keeping them registered while idle is harmless. Real
+    // teardown still happens in the mount effect's unmount cleanup.
     if (screenObservationTimerRef.current) {
       clearInterval(screenObservationTimerRef.current);
       screenObservationTimerRef.current = null;
@@ -2527,6 +2552,13 @@ export function useRealtime(): UseRealtimeReturn {
     lastContinuousPushAtRef.current = 0;
     lastUserSpeechAtRef.current = 0;
     sessionRef.current?.close();
+    // session.close() ends the shared mic stream's tracks. Stop them and drop
+    // the cached ref so the next connect() acquires a fresh stream — otherwise
+    // every subsequent session reuses a dead track and never hears the user.
+    if (micStreamRef.current) {
+      micStreamRef.current.then((s) => s?.getTracks().forEach((t) => t.stop())).catch(() => {});
+      micStreamRef.current = null;
+    }
     setStatus("disconnected");
     setAgentState("idle");
     setIsMuted(false);
