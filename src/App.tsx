@@ -14,7 +14,7 @@ import { Character } from "./components/Character";
 import { TeachDrop } from "./components/TeachDrop";
 import { PluginApproval } from "./components/PluginApproval";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { sendTextAndRespond, registerUIUpdate, setVolume } from "./lib/session-bridge";
+import { sendTextAndRespond, registerUIUpdate, setVolume, setScreenObservation } from "./lib/session-bridge";
 
 export default function App() {
   const {
@@ -64,6 +64,19 @@ export default function App() {
     ui.prefs["privacy.screen_watch"] as boolean,
     ui.prefs["privacy.audio_listen"] as boolean,
   );
+
+  // When Proactive Screen Watch permission is granted, default screen
+  // observation to continuous on connect — parity with audio listening, which
+  // already auto-activates on grant. Without this the permission was on but the
+  // mode stayed on_demand until the user verbally asked Samuel to watch. Mode
+  // resets to on_demand each session, so we re-assert it on every (re)connect.
+  // A manual mid-session "stop watching" still wins until the next reconnect
+  // (this effect only re-runs when status or the permission changes).
+  const screenWatchOn = ui.prefs["privacy.screen_watch"] as boolean;
+  useEffect(() => {
+    if (status !== "connected") return;
+    setScreenObservation(screenWatchOn ? "continuous" : "on_demand");
+  }, [status, screenWatchOn]);
 
   // Sync Samuel's voice volume with the preference
   const samuelVolume = ui.prefs["volume.samuel"] as number;
