@@ -81,6 +81,12 @@ The overlay floats over whatever app you're in (e.g. Codex) and lives in the men
 | Backend handlers (capture, AX, config) | `electron/handlers/` |
 | Styles | `src/styles/app.css` |
 
+## Implementation plan
+
+What we're building next and how it splits across the team —
+see **[FEATURE-PLAN.md](FEATURE-PLAN.md)** (shared contracts, per-feature scope,
+sequencing, and open decisions).
+
 ## Common checks
 
 ```bash
