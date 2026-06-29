@@ -437,6 +437,7 @@ export interface UseRealtimeReturn {
   transcript: TranscriptEntry[];
   agentState: "idle" | "listening" | "thinking" | "speaking";
   screenTarget: string | null;
+  screenObserving: boolean;
   connect: () => Promise<void>;
   disconnect: () => void;
   mute: (muted: boolean) => void;
@@ -515,6 +516,10 @@ export function useRealtime(): UseRealtimeReturn {
   >("idle");
   const [isMuted, setIsMuted] = useState(false);
   const [screenTarget, setScreenTarget] = useState<string | null>(null);
+  // Reactive mirror of screenObservationModeRef so the UI can show a truthful
+  // persistent "observing" indicator. The ref is the source of truth for the
+  // pump; this state exists purely to re-render the indicator on mode changes.
+  const [screenObserving, setScreenObserving] = useState(false);
   const screenTargetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Mirror live session state into the bridge runtime snapshot so the
@@ -1257,6 +1262,7 @@ export function useRealtime(): UseRealtimeReturn {
     // (much cheaper than the multi-app dump).
     registerSetScreenObservation((mode, opts) => {
       screenObservationModeRef.current = mode;
+      setScreenObserving(mode === "continuous");
       const reason = opts?.reason;
       const app = opts?.app?.trim() || null;
       if (mode === "continuous") {
@@ -2563,6 +2569,7 @@ export function useRealtime(): UseRealtimeReturn {
       screenObservationTimerRef.current = null;
     }
     screenObservationModeRef.current = "on_demand";
+    setScreenObserving(false);
     screenObservationAppRef.current = null;
     lastContinuousAxHashRef.current = "";
     lastContinuousAxLengthRef.current = 0;
@@ -2692,16 +2699,22 @@ export function useRealtime(): UseRealtimeReturn {
   }, []);
 
   const sendText = useCallback((text: string) => {
-    if (!text.trim()) return;
     const trimmed = text.trim();
+    if (!trimmed || !sessionRef.current) return;
+    // If the model is mid-response, interrupt it so this new turn is heard
+    // rather than silently dropped. The coach panel's controls (Done / Why? /
+    // …) and text input both route here, so a click while Husky is speaking
+    // must not no-op after we've already echoed the user's message.
+    if (responseInProgressRef.current) {
+      try { sessionRef.current.interrupt(); } catch { /* already settled */ }
+      responseInProgressRef.current = false;
+    }
     setTranscript((prev) => [...prev, makeEntry("user", trimmed)]);
     recordTurn("user", trimmed);
-    if (!sessionRef.current) return;
-    if (responseInProgressRef.current) {
-      console.log("[session] skipping sendText — model is busy");
-      return;
-    }
-    sessionRef.current.sendMessage(text);
+    // Typed/clicked turns have no speech_stopped event to flip the panel into
+    // "thinking" — set it optimistically so the request shows immediate feedback.
+    setAgentState("thinking");
+    sessionRef.current.sendMessage(trimmed);
   }, [recordTurn]);
 
   return {
@@ -2709,6 +2722,7 @@ export function useRealtime(): UseRealtimeReturn {
     transcript,
     agentState,
     screenTarget,
+    screenObserving,
     connect,
     disconnect,
     mute,

@@ -9,8 +9,8 @@ interface Props {
 // new outbound endpoints are added.
 export function PrivacyPolicy({ onClose }: Props) {
   return (
-    <div className="settings-overlay" onClick={onClose}>
-      <div className="settings-panel privacy-policy-panel" onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-overlay" onClick={onClose}>
+      <div className="sheet-panel privacy-policy-panel" onClick={(e) => e.stopPropagation()}>
         <div className="settings-header">
           <h3>Privacy Policy</h3>
           <button className="settings-close" onClick={onClose}>&times;</button>
@@ -18,26 +18,26 @@ export function PrivacyPolicy({ onClose }: Props) {
 
         <div className="privacy-policy-body">
           <p className="privacy-policy-meta">
-            Last updated: 2026-06-06. This describes how the Samuel desktop
+            Last updated: 2026-06-06. This describes how the Husky desktop
             app handles your data. We aim to be specific rather than aspirational
             — if any item below stops being true, we treat that as a bug.
           </p>
 
-          <h4>1. Who runs Samuel</h4>
+          <h4>1. Who runs Husky</h4>
           <p>
-            Samuel is a desktop app that runs on your machine. It connects to
+            Husky is a desktop app that runs on your machine. It connects to
             OpenAI to do its thinking, in one of two modes:
           </p>
           <ul>
             <li>
               <strong>Bring-your-own-key (BYOK).</strong> If you paste an
               OpenAI API key into Settings, the app talks to OpenAI directly
-              with that key. Nothing reaches the Samuel project's servers.
+              with that key. Nothing reaches the Husky project's servers.
             </li>
             <li>
               <strong>Trial mode.</strong> If you have not provided a key, a
               short list of OpenAI endpoints is routed through the
-              <em> Samuel proxy</em>, a Cloudflare Worker operated by the Samuel
+              <em> Husky proxy</em>, a Cloudflare Worker operated by the Husky
               project. The proxy adds the OpenAI key on its way upstream and
               applies daily rate limits, so trial users can use the app
               without an OpenAI account. Section 8 below describes exactly
@@ -53,7 +53,7 @@ export function PrivacyPolicy({ onClose }: Props) {
           <ul>
             <li>
               <strong>Microphone audio</strong> — streamed live to the realtime
-              voice model while you are speaking with Samuel.
+              voice model while you are speaking with Husky.
             </li>
             <li>
               <strong>Audio recordings</strong> — when you use the system-audio
@@ -61,7 +61,7 @@ export function PrivacyPolicy({ onClose }: Props) {
               transcription endpoint and discarded after the response.
             </li>
             <li>
-              <strong>Screen content</strong> — when you ask Samuel to read or
+              <strong>Screen content</strong> — when you ask Husky to read or
               act on an app, the accessibility tree text and (for Computer
               Use) periodic screenshots of the targeted window are sent.
             </li>
@@ -82,20 +82,20 @@ export function PrivacyPolicy({ onClose }: Props) {
           <p>
             OpenAI&rsquo;s handling of this data is governed by their own
             terms and privacy policy, including their default retention and
-            abuse-monitoring practices. Samuel cannot opt you out of those on
+            abuse-monitoring practices. Husky cannot opt you out of those on
             your behalf — review them on the OpenAI dashboard if that matters
             to you.
           </p>
 
           <p>
-            <strong>SerpAPI</strong> is contacted only when Samuel uses the
+            <strong>SerpAPI</strong> is contacted only when Husky uses the
             web search tool. Your search query is sent to <code>serpapi.com</code>.
             Nothing is sent to SerpAPI when you are not using web search.
           </p>
 
           <p>
             <strong>OAuth providers</strong> (Google, GitHub, Spotify) are
-            contacted only when you explicitly connect an account. Samuel
+            contacted only when you explicitly connect an account. Husky
             stores the resulting access tokens locally and uses them only
             against those providers.
           </p>
@@ -105,7 +105,7 @@ export function PrivacyPolicy({ onClose }: Props) {
           <ul>
             <li>
               <code>~/.samuel/memory.json</code> &mdash; facts you taught
-              Samuel, recent observations, recent transcripts, vocabulary
+              Husky, recent observations, recent transcripts, vocabulary
               you&rsquo;ve seen, corrections you&rsquo;ve given, and active
               watches.
             </li>
@@ -150,7 +150,7 @@ export function PrivacyPolicy({ onClose }: Props) {
               the app itself produced.
             </li>
             <li>
-              Telemetry, crash reports, and analytics. Samuel does not run any.
+              Telemetry, crash reports, and analytics. Husky does not run any.
             </li>
           </ul>
 
@@ -170,7 +170,7 @@ export function PrivacyPolicy({ onClose }: Props) {
             </li>
             <li>
               <strong>Export Data</strong> writes a single JSON file
-              containing everything Samuel stored about you, suitable for
+              containing everything Husky stored about you, suitable for
               archive or audit. API keys are excluded by default.
             </li>
             <li>
@@ -183,8 +183,8 @@ export function PrivacyPolicy({ onClose }: Props) {
 
           <h4>6. Children</h4>
           <p>
-            Samuel is not designed for, or directed at, children under 13.
-            Do not let a child use Samuel without supervision; the audio,
+            Husky is not designed for, or directed at, children under 13.
+            Do not let a child use Husky without supervision; the audio,
             screen, and tool capabilities are powerful and could expose
             personal information to OpenAI.
           </p>
@@ -196,7 +196,7 @@ export function PrivacyPolicy({ onClose }: Props) {
             channel — the policy ships with the app.
           </p>
 
-          <h4>8. The Samuel trial proxy</h4>
+          <h4>8. The Husky trial proxy</h4>
           <p>
             When you run in trial mode, requests to the OpenAI Realtime,
             Whisper, Chat Completions, and Responses endpoints are sent to
@@ -210,7 +210,7 @@ export function PrivacyPolicy({ onClose }: Props) {
           <ul>
             <li>
               <strong>Your installation ID</strong> &mdash; a UUID generated
-              the first time Samuel runs and stored at
+              the first time Husky runs and stored at
               <code> ~/.samuel/installation-id</code>. The proxy uses it as a
               rate-limit bucket so behind-NAT users don&rsquo;t share quota.
               It is not tied to any account, name, or device identifier.
@@ -235,7 +235,7 @@ export function PrivacyPolicy({ onClose }: Props) {
             If you do not want the proxy to see your requests at all, paste
             your own OpenAI key in Settings &rarr; API Key. The full source
             of the proxy is in the <code>proxy/</code> directory of the
-            Samuel repository, including the Cloudflare configuration; you
+            Husky repository, including the Cloudflare configuration; you
             can audit or self-host it.
           </p>
         </div>

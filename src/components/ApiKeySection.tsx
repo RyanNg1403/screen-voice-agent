@@ -102,7 +102,7 @@ export function ApiKeySection() {
 					<div className="settings-key-status settings-key-status-byok">
 						<span className="settings-key-badge">Your key</span>
 						<span className="settings-key-text">
-							Samuel is calling OpenAI directly with the key you provided. No trial limits, no proxy in the path. Your usage shows up on your OpenAI bill.
+							Husky is calling OpenAI directly with the key you provided. No trial limits, no proxy in the path. Your usage shows up on your OpenAI bill.
 						</span>
 					</div>
 					<button className="settings-btn settings-btn-subtle" onClick={clearKey} disabled={busy}>
@@ -117,8 +117,8 @@ export function ApiKeySection() {
 						<span className="settings-key-badge">Trial</span>
 						<span className="settings-key-text">
 							{trialPaused
-								? "The shared daily trial budget is used up for today. Add your own OpenAI API key below to keep using Samuel without limits."
-								: "Samuel is using a shared trial connection. Daily caps apply per device. Paste your own OpenAI key to remove all limits."}
+								? "The shared daily trial budget is used up for today. Add your own OpenAI API key below to keep using Husky without limits."
+								: "Husky is using a shared trial connection. Daily caps apply per device. Paste your own OpenAI key to remove all limits."}
 						</span>
 					</div>
 
@@ -149,13 +149,13 @@ export function ApiKeySection() {
 
 					{status?.mode === "no_proxy" && (
 						<div className="settings-key-warn">
-							No trial proxy is configured for this build. Add your own OpenAI key below to use Samuel.
+							No trial proxy is configured for this build. Add your own OpenAI key below to use Husky.
 						</div>
 					)}
 
 					{status?.mode === "proxy_error" && (
 						<div className="settings-key-warn">
-							Couldn't reach the trial proxy. Add your own OpenAI key below to use Samuel offline of our trial service.
+							Couldn't reach the trial proxy. Add your own OpenAI key below to use Husky offline of our trial service.
 							{status.message && <div className="settings-key-warn-detail">{status.message}</div>}
 						</div>
 					)}

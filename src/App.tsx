@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "./lib/invoke-bridge";
-import { getCurrentWindow, LogicalSize } from "./lib/electron-window";
+import { getCurrentWindow } from "./lib/electron-window";
+import { getConversationBridge } from "./lib/conversation-bridge";
 import { useRealtime } from "./hooks/useRealtime";
 import { useWakeWord } from "./hooks/useWakeWord";
 import { useRecordMode } from "./hooks/useRecordMode";
@@ -10,11 +11,11 @@ import { useWatcherLoop } from "./hooks/useWatcherLoop";
 import { useUIPreferences } from "./hooks/useUIPreferences";
 import { playChime, playSleep } from "./lib/sounds";
 import { StatusBar } from "./components/StatusBar";
-import { Character } from "./components/Character";
-import { TeachDrop } from "./components/TeachDrop";
+import { CoachPanel } from "./components/CoachPanel";
+import { ToolApprovalCard } from "./components/ToolApprovalCard";
 import { PluginApproval } from "./components/PluginApproval";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { sendTextAndRespond, registerUIUpdate, setVolume, setScreenObservation } from "./lib/session-bridge";
+import { registerUIUpdate, setVolume, setScreenObservation } from "./lib/session-bridge";
 
 export default function App() {
   const {
@@ -22,6 +23,7 @@ export default function App() {
     transcript,
     agentState,
     screenTarget,
+    screenObserving,
     connect,
     disconnect,
     mute,
@@ -34,6 +36,7 @@ export default function App() {
     alwaysAllowApp,
     alwaysDenyApp,
     sendText,
+    interrupt,
   } = useRealtime();
 
   const record = useRecordMode();
@@ -85,7 +88,6 @@ export default function App() {
   }, [samuelVolume]);
 
   const [awaitingWake, setAwaitingWake] = useState(true);
-  const [envelopeOpen, setEnvelopeOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // OFF → ON requires explicit consent: we surface a native macOS-style
@@ -231,68 +233,62 @@ export default function App() {
     disconnect();
   }, [disconnect, setWakeWordMode, extractFeedback]);
 
-  // Auto-resize window; respect user-set width/height prefs
-  const containerRef = useRef<HTMLDivElement>(null);
-  const userW = (ui.prefs["window.width"] as number) ?? 520;
-  const userH = (ui.prefs["window.height"] as number) ?? 740;
+  // Global "talk" hotkey (Control+Option+Space): toggle the conversation
+  // without needing the panel open. Asleep -> wake & start listening; active
+  // -> interrupt any in-flight response and go quiet. Mirrors the auto-sleep
+  // path. Respects the Voice Input privacy gate: if the mic is disabled we
+  // never start a session, so the hotkey can't bypass the kill-switch.
+  const toggleConversation = useCallback(() => {
+    if (awaitingWake) {
+      if (!voiceInputAllowed) return;
+      handleWakeDetected();
+    } else {
+      interrupt();
+      playSleep();
+      mute(true);
+      setAwaitingWake(true);
+      extractFeedback();
+    }
+  }, [awaitingWake, voiceInputAllowed, handleWakeDetected, interrupt, mute, extractFeedback]);
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const win = getCurrentWindow();
-    const MIN_H = 400;
-    const MAX_H = Math.max(userH, 900);
-    let lastH = 0;
-    const observer = new ResizeObserver(() => {
-      const needed = Math.min(MAX_H, Math.max(MIN_H, el.scrollHeight + 20));
-      if (Math.abs(needed - lastH) > 10) {
-        lastH = needed;
-        win.setSize(new LogicalSize(userW, needed));
-      }
-    });
-    observer.observe(el);
-    win.setSize(new LogicalSize(userW, Math.min(MAX_H, Math.max(MIN_H, el.scrollHeight + 20))));
-    return () => observer.disconnect();
-  }, [userW, userH]);
+    const bridge = getConversationBridge();
+    if (!bridge) return;
+    return bridge.onToggle(() => toggleConversation());
+  }, [toggleConversation]);
+
+  // Mirror conversation state to the menu-bar icon so a hidden panel still
+  // shows whether Husky is *actually* listening — connected, awake, not muted,
+  // and Voice Input permitted.
+  useEffect(() => {
+    const listening = status === "connected" && !awaitingWake && !isMuted && voiceInputAllowed;
+    getConversationBridge()?.setListening(listening);
+  }, [status, awaitingWake, isMuted, voiceInputAllowed]);
+
+  // The window is freely user-resizable (BrowserWindow resizable: true). We
+  // intentionally do NOT auto-resize to content — an auto-resizer fights the
+  // user's manual drag and starves the Settings sheet of height. The root
+  // fills the window (h-screen) so the card paints edge-to-edge at any size.
 
   return (
-    <div ref={containerRef} className="flex h-screen flex-col" style={ui.cssVars as React.CSSProperties}>
-      {/* Compact header — draggable region for borderless window */}
-      <div className="drag-region flex items-center justify-between px-5 py-2">
-        <StatusBar
-          agentState={agentState}
-          status={status}
-          awaitingWake={awaitingWake}
-        />
-        <div className="flex items-center gap-2">
-          {/* Stop/processing button always visible while recording, even in wake mode */}
-          {record.recordingState === "recording" && (
-            <button
-              onClick={record.stopRecording}
-              className="record-btn-active rounded-full p-2 text-red-300 transition-colors"
-              title={`Recording... ${formatTime(record.elapsed)}`}
-            >
-              <StopIcon />
-            </button>
-          )}
-          {record.recordingState === "processing" && (
-            <div className="rounded-full p-2 bg-white/10 text-amber-300 animate-pulse" title="Processing...">
-              <ProcessingIcon />
-            </div>
-          )}
-
+    <div className="coach-window flex h-screen flex-col" style={ui.cssVars as React.CSSProperties}>
+      {/* Compact header — draggable region for borderless window. Hidden on the
+          Settings page, which renders its own header. */}
+      {!settingsOpen && (
+      <div className="drag-region flex items-center justify-between px-4 py-2.5">
+        <div className="flex items-center gap-2.5">
+          <img src="./husky-logo.png" alt="" className="coach-brand-mark" />
+          <span className="coach-brand-name">Husky</span>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <StatusBar
+            agentState={agentState}
+            status={status}
+            awaitingWake={awaitingWake}
+          />
           {/* Full controls only when connected and active */}
           {status === "connected" && !awaitingWake && (
             <>
-              {(record.recordingState === "idle" || record.recordingState === "results") && (
-                <button
-                  onClick={record.startRecording}
-                  className="rounded-full p-2 bg-white/10 text-slate-400 hover:text-red-400 transition-colors"
-                  title="Record system audio"
-                >
-                  <RecordIcon />
-                </button>
-              )}
               <button
                 onClick={() => {
                   // Privacy gate wins over manual unmute attempts.
@@ -324,7 +320,7 @@ export default function App() {
             </>
           )}
 
-          {/* Settings — always visible */}
+          {/* Settings */}
           <button
             onClick={() => setSettingsOpen(true)}
             className="rounded-full p-2 bg-white/10 text-slate-400 hover:text-slate-200 transition-colors"
@@ -332,57 +328,66 @@ export default function App() {
           >
             <GearIcon />
           </button>
+
+          {/* Hide the overlay — re-summon with the tray icon or ⌥Space */}
+          <button
+            onClick={() => getCurrentWindow().hide()}
+            className="rounded-full p-2 bg-white/10 text-slate-400 hover:text-slate-200 transition-colors"
+            title="Hide (⌥Space to toggle)"
+          >
+            <HideIcon />
+          </button>
         </div>
       </div>
+      )}
 
-      {/* Character stage — takes up the full area */}
-      <Character
-        agentState={agentState}
-        transcript={transcript}
-        awaitingWake={awaitingWake}
-        screenTarget={screenTarget}
-        recordingState={record.recordingState}
-        recordingElapsed={record.elapsed}
-        analysis={record.analysis}
-        panelOpen={record.panelOpen}
-        analysisStage={record.analysisStage}
-        analysisElapsed={record.analysisElapsed}
-        onDismissAnalysis={record.dismiss}
-        onTogglePanel={record.togglePanel}
-        onClearAnalysis={record.clearAnalysis}
-        onMailboxToggle={() => setEnvelopeOpen((o) => !o)}
-        onWakeUp={handleWakeDetected}
-        envelopeSlot={
-          <TeachDrop
-            visible={envelopeOpen}
-            onToggle={() => setEnvelopeOpen(false)}
-            onDrop={(input) => {
-              setEnvelopeOpen(false);
-              if (input.startsWith("data:image/")) {
-                sendTextAndRespond(
-                  `[System: The user pasted an image via chat. Describe what you see and ask if they need help with it.]`,
-                );
-              } else {
-                sendText(input);
-              }
-            }}
-          />
-        }
-        onApproveToolCall={approveToolCall}
-        onDenyToolCall={denyToolCall}
-        onAlwaysAllowApp={alwaysAllowApp}
-        onAlwaysDenyApp={alwaysDenyApp}
-      />
+      {/* Body swaps between the coach surface and the full-window Settings page */}
+      {settingsOpen ? (
+        <SettingsPanel
+          visible={settingsOpen}
+          prefs={ui.prefs}
+          onToggle={handlePrivacyToggle}
+          onResetPrefs={ui.resetAll}
+          onClose={() => setSettingsOpen(false)}
+        />
+      ) : (
+        <CoachPanel
+          status={status}
+          agentState={agentState}
+          awaitingWake={awaitingWake}
+          screenTarget={screenTarget}
+          watching={screenObserving}
+          transcript={transcript}
+          onSend={sendText}
+          onWake={handleWakeDetected}
+        />
+      )}
+
+      {/* Tool-approval cards live OUTSIDE the page swap so a pending approval
+          stays visible — and its auto-approve (YOLO) effect stays mounted —
+          even while the Settings page is open. */}
+      {(() => {
+        const pending = transcript.filter(
+          (e) => e.role === "approval" && e.approval?.state === "pending",
+        ).slice(-2);
+        if (pending.length === 0) return null;
+        return (
+          <div className="approval-layer">
+            {pending.map((entry) => (
+              <ToolApprovalCard
+                key={entry.id}
+                entry={entry}
+                onApprove={approveToolCall}
+                onDeny={denyToolCall}
+                onAlwaysAllow={alwaysAllowApp}
+                onAlwaysDeny={alwaysDenyApp}
+              />
+            ))}
+          </div>
+        );
+      })()}
 
       <PluginApproval />
-
-      <SettingsPanel
-        visible={settingsOpen}
-        prefs={ui.prefs}
-        onToggle={handlePrivacyToggle}
-        onResetPrefs={ui.resetAll}
-        onClose={() => setSettingsOpen(false)}
-      />
     </div>
   );
 }
@@ -410,37 +415,6 @@ function MicOffIcon() {
   );
 }
 
-function formatTime(secs: number): string {
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-function RecordIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-      <circle cx="12" cy="12" r="8" />
-    </svg>
-  );
-}
-
-function StopIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-      <rect x="6" y="6" width="12" height="12" rx="2" />
-    </svg>
-  );
-}
-
-function ProcessingIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2v4" /><path d="M12 18v4" /><path d="m4.93 4.93 2.83 2.83" /><path d="m16.24 16.24 2.83 2.83" />
-      <path d="M2 12h4" /><path d="M18 12h4" /><path d="m4.93 19.07 2.83-2.83" /><path d="m16.24 7.76 2.83-2.83" />
-    </svg>
-  );
-}
-
 function GearIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -456,6 +430,15 @@ function PhoneOffIcon() {
       <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67" />
       <path d="M2.68 2.68A19.79 19.79 0 0 0 2.11 4.18 2 2 0 0 0 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91" />
       <line x1="2" x2="22" y1="2" y2="22" />
+    </svg>
+  );
+}
+
+function HideIcon() {
+  // Chevron-down — "tuck the overlay away"
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m6 9 6 6 6-6" />
     </svg>
   );
 }
