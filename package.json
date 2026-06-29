@@ -16,6 +16,7 @@
     "electron:compile": "tsc -p electron/tsconfig.json && cp electron/package.json dist-electron/package.json",
     "electron:dev": "npm run electron:compile && concurrently \"vite\" \"unset ELECTRON_RUN_AS_NODE && NODE_ENV=development electron dist-electron/main.js\"",
     "electron:build": "npm run ui:build && npm run electron:compile && electron-builder",
+    "test:group-b": "node --import tsx --test src/hooks/useLessonState.test.ts src/lib/proactive-tutor.test.ts",
     "release": "scripts/release.sh",
     "release:signed": "scripts/release-signed.sh",
     "cli:build": "tsc -p tsconfig.cli.json",

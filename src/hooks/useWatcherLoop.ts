@@ -1,6 +1,14 @@
 import { useEffect, useRef } from "react";
 import { invoke } from "../lib/invoke-bridge";
+import {
+  createProactiveTutorState,
+  evaluateProactiveTutor,
+  formatProactiveMovePrompt,
+  inferScreenStateFromWatcherText,
+} from "../lib/proactive-tutor";
+import { sendTextAndRespond } from "../lib/session-bridge";
 import { runWatchEvaluation, type WatchAlert } from "../lib/watcher-eval";
+import type { TutorMove } from "../lib/tutor-types";
 import type { ConnectionStatus } from "./useRealtime";
 
 const WATCHER_INTERVAL_MS = 20_000;
@@ -24,6 +32,7 @@ export function useWatcherLoop(
   learningActive?: boolean,
   screenWatchEnabled = true,
   audioListenEnabled = true,
+  onProactiveMove?: (move: TutorMove) => void,
 ) {
   const agentStateRef = useRef(agentState);
   agentStateRef.current = agentState;
@@ -37,6 +46,9 @@ export function useWatcherLoop(
   const audioListenRef = useRef(audioListenEnabled);
   audioListenRef.current = audioListenEnabled;
   const inFlightRef = useRef(false);
+  const onProactiveMoveRef = useRef(onProactiveMove);
+  onProactiveMoveRef.current = onProactiveMove;
+  const proactiveStateRef = useRef(createProactiveTutorState());
   // Tracks whether we currently hold the watcher-side slot of the shared
   // audio capture. Used to decide when to acquire/release per tick.
   const audioHeldRef = useRef(false);
@@ -72,6 +84,7 @@ export function useWatcherLoop(
 
       const hasScreenTriggers = enabled.some((w) => w.source === "screen" || w.source === "both");
       const hasAudioTriggers = enabled.some((w) => w.source === "audio" || w.source === "both");
+      const wantsProactiveScreen = Boolean(onProactiveMoveRef.current);
       // Audio capture is gated by BOTH a watcher needing it and the user
       // having privacy.audio_listen enabled. Without this AND, flipping
       // audio_listen off in Settings wouldn't actually stop watcher-side
@@ -91,18 +104,28 @@ export function useWatcherLoop(
         console.log("[watcher-standalone] released audio capture");
       }
 
-      if (enabled.length === 0) return;
+      if (enabled.length === 0 && !wantsProactiveScreen) return;
 
       inFlightRef.current = true;
 
       try {
         // Screen content: capture and describe via GPT-4o-mini
         let screenText = "";
-        if (hasScreenTriggers && screenWatchRef.current) {
+        if ((hasScreenTriggers || wantsProactiveScreen) && screenWatchRef.current) {
           try {
             screenText = await invoke<string>("check_screen_text") ?? "";
           } catch {
             // check_screen_text may not exist yet; fall back to nothing
+          }
+        }
+
+        if (wantsProactiveScreen && screenText.trim()) {
+          const screenState = inferScreenStateFromWatcherText(screenText, Date.now());
+          const result = evaluateProactiveTutor(screenState, proactiveStateRef.current);
+          proactiveStateRef.current = result.state;
+          if (result.move) {
+            onProactiveMoveRef.current?.(result.move);
+            sendTextAndRespond(formatProactiveMovePrompt(result.move, screenState));
           }
         }
 
@@ -119,9 +142,11 @@ export function useWatcherLoop(
           }
         }
 
-        const { triggerCount } = await runWatchEvaluation({ audioText, screenText });
-        if (triggerCount > 0) {
-          console.log(`[watcher-standalone] ${triggerCount} trigger(s) fired`);
+        if (enabled.length > 0) {
+          const { triggerCount } = await runWatchEvaluation({ audioText, screenText });
+          if (triggerCount > 0) {
+            console.log(`[watcher-standalone] ${triggerCount} trigger(s) fired`);
+          }
         }
       } catch (e) {
         console.error("[watcher-standalone] error:", e);

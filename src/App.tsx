@@ -9,13 +9,17 @@ import { useLearningMode } from "./hooks/useLearningMode";
 import { useAudioBuffer } from "./hooks/useAudioBuffer";
 import { useWatcherLoop } from "./hooks/useWatcherLoop";
 import { useUIPreferences } from "./hooks/useUIPreferences";
+import { buildSessionReport, useLessonState, type SessionReportData } from "./hooks/useLessonState";
 import { playChime, playSleep } from "./lib/sounds";
 import { StatusBar } from "./components/StatusBar";
 import { CoachPanel } from "./components/CoachPanel";
+import { ProgressView } from "./components/ProgressView";
+import { SessionReport } from "./components/SessionReport";
 import { ToolApprovalCard } from "./components/ToolApprovalCard";
 import { PluginApproval } from "./components/PluginApproval";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { registerUIUpdate, setVolume, setScreenObservation } from "./lib/session-bridge";
+import type { TutorMove } from "./lib/tutor-types";
 
 export default function App() {
   const {
@@ -41,11 +45,22 @@ export default function App() {
 
   const record = useRecordMode();
   const ui = useUIPreferences();
+  const {
+    lessonState,
+    recordTutorMove,
+    recordSessionEvent,
+    resetLesson,
+  } = useLessonState();
+  const [sessionReport, setSessionReport] = useState<SessionReportData | null>(null);
+  const handleProactiveMove = useCallback((move: TutorMove) => {
+    recordTutorMove(move);
+  }, [recordTutorMove]);
   const learning = useLearningMode(
     status,
     agentState,
     ui.prefs["privacy.screen_watch"] as boolean,
     ui.prefs["privacy.audio_listen"] as boolean,
+    handleProactiveMove,
   );
 
   // Ambient audio buffer — the pull-model "I've been listening, ask me
@@ -66,6 +81,7 @@ export default function App() {
     learning.learningActive,
     ui.prefs["privacy.screen_watch"] as boolean,
     ui.prefs["privacy.audio_listen"] as boolean,
+    handleProactiveMove,
   );
 
   // When Proactive Screen Watch permission is granted, default screen
@@ -156,6 +172,8 @@ export default function App() {
   // Wake word detected — connect (if needed) then unmute
   const handleWakeDetected = useCallback(async () => {
     if (connectingRef.current) return;
+    setSessionReport(null);
+    resetLesson();
     playChime();
     setAwaitingWake(false);
     sessionActiveAtRef.current = Date.now();
@@ -172,12 +190,13 @@ export default function App() {
         connectingRef.current = false;
       }
     }
-  }, [status, connect, mute, setWakeWordMode, prefetchKey]);
+  }, [status, connect, mute, setWakeWordMode, prefetchKey, resetLesson]);
 
   // Run post-session feedback extraction when going to sleep (non-blocking)
   const extractFeedback = useCallback(() => {
-    const entries = transcript
-      .filter((t) => t.role === "user" || t.role === "assistant")
+    const spokenEntries = transcript
+      .filter((t) => t.role === "user" || t.role === "assistant");
+    const entries = spokenEntries
       .slice(-20)
       .map((t) => `${t.role}: ${t.text}`)
       .join("\n");
@@ -186,7 +205,14 @@ export default function App() {
     if (entries.length > 8) {
       invoke("extract_session_feedback", { transcript: entries }).catch(() => {});
     }
-  }, [transcript]);
+    if (spokenEntries.length > 0 || lessonState.events.length > 0) {
+      setSessionReport(buildSessionReport({
+        lessonState,
+        transcript,
+        endedAt: Date.now(),
+      }));
+    }
+  }, [transcript, lessonState]);
 
   // Auto-sleep when the agent has been idle for IDLE_SLEEP_DELAY_MS. We wait
   // a generous chunk of time before flipping back to wake-word mode so the
@@ -232,6 +258,11 @@ export default function App() {
     setWakeWordMode(false);
     disconnect();
   }, [disconnect, setWakeWordMode, extractFeedback]);
+
+  const handleSendText = useCallback((text: string) => {
+    recordSessionEvent("user_prompt", text);
+    sendText(text);
+  }, [recordSessionEvent, sendText]);
 
   // Global "talk" hotkey (Control+Option+Space): toggle the conversation
   // without needing the panel open. Asleep -> wake & start listening; active
@@ -351,6 +382,7 @@ export default function App() {
           onClose={() => setSettingsOpen(false)}
         />
       ) : (
+        <>
         <CoachPanel
           status={status}
           agentState={agentState}
@@ -358,9 +390,11 @@ export default function App() {
           screenTarget={screenTarget}
           watching={screenObserving}
           transcript={transcript}
-          onSend={sendText}
+          onSend={handleSendText}
           onWake={handleWakeDetected}
         />
+        <ProgressView lessonState={lessonState} />
+        </>
       )}
 
       {/* Tool-approval cards live OUTSIDE the page swap so a pending approval
@@ -386,6 +420,13 @@ export default function App() {
           </div>
         );
       })()}
+
+      {!settingsOpen && sessionReport && (
+        <SessionReport
+          report={sessionReport}
+          onDismiss={() => setSessionReport(null)}
+        />
+      )}
 
       <PluginApproval />
     </div>

@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "../lib/invoke-bridge";
-import { registerLearningLanguage, sendSilentContext } from "../lib/session-bridge";
+import {
+  registerLearningLanguage,
+  sendSilentContext,
+  sendTextAndRespond,
+} from "../lib/session-bridge";
+import {
+  createProactiveTutorState,
+  evaluateProactiveTutor,
+  formatProactiveMovePrompt,
+  inferScreenStateFromWatcherText,
+} from "../lib/proactive-tutor";
 import { runWatchEvaluation } from "../lib/watcher-eval";
+import type { TutorMove } from "../lib/tutor-types";
 import type { ConnectionStatus } from "./useRealtime";
 
 const STORAGE_KEY = "samuel-learning-language";
@@ -24,6 +35,7 @@ export function useLearningMode(
   agentState?: "idle" | "listening" | "thinking" | "speaking",
   screenWatchEnabled = true,
   audioListenEnabled = true,
+  onProactiveMove?: (move: TutorMove) => void,
 ): UseLearningModeReturn {
   const agentStateRef = useRef(agentState);
   agentStateRef.current = agentState;
@@ -31,6 +43,9 @@ export function useLearningMode(
   screenWatchRef.current = screenWatchEnabled;
   const audioListenRef = useRef(audioListenEnabled);
   audioListenRef.current = audioListenEnabled;
+  const onProactiveMoveRef = useRef(onProactiveMove);
+  onProactiveMoveRef.current = onProactiveMove;
+  const proactiveStateRef = useRef(createProactiveTutorState());
 
   const [language, setLanguage] = useState<string | null>(
     () => localStorage.getItem(STORAGE_KEY) || null,
@@ -159,6 +174,16 @@ export function useLearningMode(
         // prevent false positives from English audio being classified as Japanese.
         const audioText = (audioResult.transcript && audioResult.hint) ? audioResult.transcript : "";
         const screenText = screenHint && !screenHint.startsWith("NONE") ? screenHint : "";
+
+        if (screenText && onProactiveMoveRef.current) {
+          const screenState = inferScreenStateFromWatcherText(screenText, Date.now());
+          const result = evaluateProactiveTutor(screenState, proactiveStateRef.current);
+          proactiveStateRef.current = result.state;
+          if (result.move) {
+            onProactiveMoveRef.current(result.move);
+            sendTextAndRespond(formatProactiveMovePrompt(result.move, screenState));
+          }
+        }
 
         const { triggerCount } = await runWatchEvaluation({ audioText, screenText });
         if (triggerCount > 0) {

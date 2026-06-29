@@ -2624,11 +2624,18 @@ const computerUseTool = tool({
     try {
       // Enrich task with recent conversation context if the task references "that" / "it" / "what we discussed"
       let enrichedTask = task;
-      if (/\b(that|it|what we|the thing)\b/i.test(task) && details?.context?.history) {
-        const recentText = details.context.history
+      const history = (details?.context as {
+        history?: Array<{
+          type: string;
+          role?: string;
+          content?: Array<{ text?: string }>;
+        }>;
+      } | undefined)?.history;
+      if (/\b(that|it|what we|the thing)\b/i.test(task) && history) {
+        const recentText = history
           .slice(-4)
-          .filter((item: { type: string }) => item.type === "message")
-          .map((item: { role: string; content?: Array<{ text?: string }> }) =>
+          .filter((item) => item.type === "message")
+          .map((item) =>
             item.content?.map((c) => c.text).filter(Boolean).join(" ") || ""
           )
           .filter(Boolean)
