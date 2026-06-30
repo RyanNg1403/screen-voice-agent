@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { getFrontmostAppName, isExcludedApp } from "./frontmost.js";
 import {
 	readFileSync,
 	writeFileSync,
@@ -88,8 +89,8 @@ function truncateStr(s: string, max: number): string {
 }
 
 // ── AppleScript helpers ─────────────────────────────────────────────────────
-
-const EXCLUDED_APPS = ["samuel", "cursor", "electron"];
+// (getFrontmostAppName + EXCLUDED_APPS + isExcludedApp now live in frontmost.ts,
+// the single source of truth shared with learning.ts and misc.ts.)
 
 function getUserFacingApp(): string | null {
 	const script = `tell application "System Events"
@@ -103,25 +104,13 @@ end tell`;
 		for (const name of raw.split(",")) {
 			const trimmed = name.trim();
 			if (!trimmed) continue;
-			const lower = trimmed.toLowerCase();
-			if (EXCLUDED_APPS.some((ex) => lower.includes(ex))) continue;
+			if (isExcludedApp(trimmed)) continue;
 			return trimmed;
 		}
 	} catch {
 		// ignore
 	}
 	return null;
-}
-
-function getFrontmostAppName(): string {
-	try {
-		return execFileSync("/usr/bin/osascript", [
-			"-e",
-			'tell application "System Events" to get name of first application process whose frontmost is true',
-		], { encoding: "utf-8" }).trim();
-	} catch {
-		return "";
-	}
 }
 
 // Lightweight focused-app probe for the Companion-mode boundary handler.
@@ -132,14 +121,18 @@ export async function get_frontmost_app(): Promise<{ app: string }> {
 }
 
 // Snapshot of the user's real frontmost app, refreshed at each speech-start
-// (before Samuel/Electron can steal focus). The implicit capture target reads
-// this instead of the unordered "first visible app" heuristic, which picked an
-// arbitrary visible window rather than the one the user was actually on.
-let lastUserFacingApp: string | null = null;
+// (before the overlay can steal focus). TIMESTAMPED so a stale snapshot — the
+// user switched apps without speaking — is not reused indefinitely; past
+// STALE_SNAPSHOT_MS we fall through to the live/legacy resolver instead.
+const STALE_SNAPSHOT_MS = 5 * 60_000;
+let lastUserFacingApp: { app: string; at: number } | null = null;
 
-function isExcludedApp(name: string): boolean {
-	const lower = name.toLowerCase();
-	return EXCLUDED_APPS.some((ex) => lower.includes(ex));
+// Fresh snapshot app, or null if there's none or it has gone stale.
+function freshSnapshotApp(): string | null {
+	if (lastUserFacingApp && Date.now() - lastUserFacingApp.at < STALE_SNAPSHOT_MS) {
+		return lastUserFacingApp.app;
+	}
+	return null;
 }
 
 // Called via IPC on every speech_started: record the current frontmost app if
@@ -148,18 +141,17 @@ function isExcludedApp(name: string): boolean {
 export function snapshot_user_facing_app(): { app: string | null } {
 	const front = getFrontmostAppName();
 	if (front && !isExcludedApp(front)) {
-		lastUserFacingApp = front;
+		lastUserFacingApp = { app: front, at: Date.now() };
 	}
-	return { app: lastUserFacingApp };
+	return { app: freshSnapshotApp() };
 }
 
-// Resolve the implicit capture target: real frontmost first, then the most
-// recent speech-start snapshot, then the legacy visible-list heuristic.
+// Resolve the implicit capture target: live frontmost first (now a reliable
+// native read), then a FRESH speech-start snapshot, then the legacy heuristic.
 function resolveImplicitTargetApp(): string | null {
 	const front = getFrontmostAppName();
 	if (front && !isExcludedApp(front)) return front;
-	if (lastUserFacingApp) return lastUserFacingApp;
-	return getUserFacingApp();
+	return freshSnapshotApp() ?? getUserFacingApp();
 }
 
 // Public accessor so other handlers (e.g. read_app) resolve the implicit target
@@ -169,7 +161,7 @@ export function getUserFacingTargetApp(): string | null {
 	return resolveImplicitTargetApp();
 }
 
-function findDisplayForApp(app: string): number | null {
+export function findDisplayForApp(app: string): number | null {
 	const posScript = `tell application "System Events"
   try
     set appProc to application process "${app}"
@@ -269,21 +261,19 @@ end tell`;
 		return null;
 	}
 
-	const skip = [
-		"samuel",
-		"cursor",
-		"electron",
-		"windowserver",
-		"dock",
-		"systemiuserver",
-		"finder",
-	];
+	// System/background processes that are never the user's "app" — distinct
+	// from the OVERLAY identities (handled by isExcludedApp). Cursor is a real
+	// user editor and must NOT be skipped.
+	const SYSTEM_SKIP = ["windowserver", "dock", "systemuiserver", "finder"];
 	const apps = raw
 		.split("\n")
 		.map((l) => l.trim())
-		.filter(
-			(l) => l && !skip.some((s) => l.toLowerCase().includes(s)),
-		);
+		.filter((l) => {
+			if (!l) return false;
+			if (isExcludedApp(l)) return false; // overlay (samuel/husky/electron)
+			const lower = l.toLowerCase();
+			return !SYSTEM_SKIP.some((s) => lower.includes(s));
+		});
 
 	if (!apps.length) return null;
 
@@ -672,10 +662,11 @@ end tell`;
  */
 function captureSmartDisplay(): CaptureResult {
 	const frontApp = getFrontmostAppName();
-	const lower = frontApp.toLowerCase();
-	// If Samuel/Cursor/Electron is frontmost, find the next user-facing app
-	const actualApp = EXCLUDED_APPS.some((ex) => lower.includes(ex))
-		? getUserFacingApp()
+	// If the overlay itself (Samuel/Husky/Electron) is frontmost, prefer the
+	// speech-start snapshot, then the next user-facing app — consistent with
+	// resolveImplicitTargetApp so the smart-display path can't diverge.
+	const actualApp = (!frontApp || isExcludedApp(frontApp))
+		? (freshSnapshotApp() ?? getUserFacingApp())
 		: frontApp;
 
 	let targetDisplay = defaultDisplay;

@@ -1,5 +1,4 @@
 import {
-  type LearningStage,
   type ScreenState,
   type TutorMove,
 } from "./tutor-types";
@@ -12,7 +11,6 @@ export interface ProactiveTutorState {
   fingerprint: string | null;
   firstSeenAt: number | null;
   lastNudgeAt: number | null;
-  lastNudgeFingerprint: string | null;
 }
 
 export interface ProactiveTutorOptions {
@@ -31,7 +29,6 @@ export function createProactiveTutorState(): ProactiveTutorState {
     fingerprint: null,
     firstSeenAt: null,
     lastNudgeAt: null,
-    lastNudgeFingerprint: null,
   };
 }
 
@@ -64,9 +61,12 @@ export function evaluateProactiveTutor(
     return { move: null, state: nextState };
   }
 
+  // Primary signal is the AI vision read (screenState.risky); looksRisky is a
+  // cheap deterministic backstop so a destructive command the model misses
+  // (rm -rf, sudo, broad permissions, production/secrets) still warns.
   const riskyApproval =
     screenState.activity === "awaiting_approval" &&
-    looksRisky(screenState.summary, screenState.signals);
+    (screenState.risky || looksRisky(screenState.summary, screenState.signals));
   const persistent = now - firstSeenAt >= persistenceMs;
 
   let move: TutorMove | null = null;
@@ -106,46 +106,7 @@ export function evaluateProactiveTutor(
     state: {
       ...nextState,
       lastNudgeAt: now,
-      lastNudgeFingerprint: fingerprint,
     },
-  };
-}
-
-export function inferScreenStateFromWatcherText(
-  screenText: string,
-  capturedAt = Date.now(),
-): ScreenState {
-  const text = screenText.trim();
-  const lower = text.toLowerCase();
-  const signals = new Set<string>();
-
-  if (/\b(approval|permission|allow|deny|confirm)\b/.test(lower)) {
-    signals.add("approval dialog");
-  }
-  if (/\b(error|failed|failure|stack trace|exception|traceback)\b/.test(lower)) {
-    signals.add("error output");
-  }
-  if (/\b(test|spec|assert|pytest|vitest|tsc)\b/.test(lower)) {
-    signals.add("test output");
-  }
-  if (/\b(plan|todo|steps?|checklist)\b/.test(lower)) {
-    signals.add("plan");
-  }
-  if (/\b(edit|writing|modified|patch|diff)\b/.test(lower)) {
-    signals.add("editing");
-  }
-  if (looksRisky(text, Array.from(signals))) {
-    signals.add("risky command");
-  }
-
-  const activity = inferActivity(lower);
-  return {
-    activity,
-    appName: /\bcodex\b/i.test(text) ? "Codex" : "Unknown app",
-    summary: text.length > 180 ? `${text.slice(0, 177)}...` : text,
-    signals: Array.from(signals),
-    confidence: text.length > 0 && activity !== "unknown" ? 0.68 : 0.25,
-    capturedAt,
   };
 }
 
@@ -157,42 +118,14 @@ export function formatProactiveMovePrompt(move: TutorMove, screenState: ScreenSt
     `Message: ${move.text}`,
     `Screen: ${screenState.summary}`,
     "Deliver this as one brief tutor nudge. Do not add a second suggestion unless the action is risky.",
+    "This nudge is ALREADY logged for progress tracking — do NOT call record_tutor_move for it.",
   ].join("\n");
-}
-
-export function defaultStageForScreen(screenState: ScreenState): LearningStage {
-  return stageForActivity(screenState.activity);
-}
-
-function inferActivity(text: string): ScreenState["activity"] {
-  if (/\b(approval|permission|allow|deny|confirm)\b/.test(text)) return "awaiting_approval";
-  if (/\b(error|failed|failure|stack trace|exception|traceback)\b/.test(text)) return "error";
-  if (/\b(test|spec|assert|pytest|vitest|tsc|build)\b/.test(text)) return "testing";
-  if (/\b(plan|todo|steps?|checklist)\b/.test(text)) return "planning";
-  if (/\b(edit|writing|modified|patch|diff)\b/.test(text)) return "editing";
-  if (/\b(waiting|idle|prompt)\b/.test(text)) return "idle";
-  return "unknown";
-}
-
-function stageForActivity(activity: ScreenState["activity"]): LearningStage {
-  switch (activity) {
-    case "planning":
-      return "review_plan";
-    case "testing":
-      return "test_workflow";
-    case "error":
-      return "diagnose";
-    case "awaiting_approval":
-    case "editing":
-      return "supervise_impl";
-    default:
-      return "understand_workflow";
-  }
 }
 
 function fingerprintScreen(screenState: ScreenState): string {
   return [
     screenState.activity,
+    screenState.risky ? "risky" : "safe",
     screenState.summary.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 160),
     ...screenState.signals.map((signal) => signal.toLowerCase()).sort(),
   ].join("|");

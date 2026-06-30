@@ -7,17 +7,19 @@
  * `execute()`). This module is the seam between the two layers.
  *
  * The canonical schema lives in `src/hooks/useUIPreferences.ts` — keep keys
- * in sync with the SCHEMA there. We fail OPEN: if prefs are missing/corrupt
- * (e.g. fresh install before the hook has mounted), tools keep working with
- * their default behavior. Privacy enforcement happens once the user has
- * actively interacted with the prefs at least once.
+ * AND defaults in sync with the SCHEMA there, which defaults every privacy
+ * capability OFF on a fresh install. We fail CLOSED: if prefs are missing/
+ * corrupt (e.g. before the hook has written defaults to localStorage), tools
+ * are treated as DISABLED rather than allowed, so an uninitialized state can't
+ * silently grant a capability the Settings schema says is off. In steady state
+ * the saved prefs govern, so this only affects the brief pre-mount window.
  *
  * Two scopes of privacy keys exist:
  *
  *   - "proactive" (screen_watch, audio_listen): default OFF. Controls the
  *     ambient watcher and learning loops. Does NOT block on-demand tools.
- *   - "tool" (screen_read, audio_record, computer_use): default ON.
- *     Controls the tools the model can call directly during a turn.
+ *   - "tool" (screen_read, audio_record, computer_use): default OFF (mirror
+ *     schema). Controls the tools the model can call directly during a turn.
  *     These are master kill-switches for the corresponding capability.
  *   - "ambient context" (local_time, location): default varies. Gates
  *     ambient context that's injected at session boot or fetched on
@@ -46,13 +48,13 @@ function readBool(prefKey: string, defaultValue: boolean): boolean {
 
 /**
  * Tool-scope privacy capabilities exposed in the Settings panel. Defaults
- * mirror the schema defaults in `useUIPreferences.ts` so behavior stays
- * identical when prefs aren't initialized yet.
+ * mirror the schema defaults in `useUIPreferences.ts` (all OFF on fresh install)
+ * so an uninitialized state fails closed instead of granting a capability.
  */
 export const privacy = {
   /** On-demand screen reading: read_app, observe_screen, list_browser_tabs. */
   canReadScreen(): boolean {
-    return readBool("privacy.screen_read", true);
+    return readBool("privacy.screen_read", false);
   },
   /**
    * Explicit on-demand system-audio capture via the `recording` tool —
@@ -62,11 +64,11 @@ export const privacy = {
    * under any circumstance need both off.
    */
   canRecordAudio(): boolean {
-    return readBool("privacy.audio_record", true);
+    return readBool("privacy.audio_record", false);
   },
   /** Desktop automation: clicks, typing, key presses, computer_use loop. */
   canControlComputer(): boolean {
-    return readBool("privacy.computer_use", true);
+    return readBool("privacy.computer_use", false);
   },
   /**
    * YOLO / bypass mode: when true, per-action approval prompts are

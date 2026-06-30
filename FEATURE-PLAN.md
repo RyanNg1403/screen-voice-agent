@@ -34,23 +34,20 @@ starting proposal — refine together before locking.
 
 What Codex is doing right now, derived from screen capture + AX tree.
 
+Narrowed to the states the proactive tutor actually acts on (the original
+`idle`/`planning`/`editing`/`testing`/`unknown` were computed but never
+consumed). The single FR-6 vision read also judges
+`risky` so the safety warning doesn't depend on a keyword regex.
+
 ```ts
-type CodexActivity =
-  | "idle"            // waiting for the learner to type a prompt
-  | "planning"        // showing a plan / list of intended changes
-  | "editing"         // writing files, running commands, streaming output
-  | "awaiting_approval" // a permission/approval dialog is up
-  | "testing"         // running the app / tests / showing results
-  | "error"           // visible error, failed test, broken output
-  | "unknown";
+type CodexActivity = "error" | "awaiting_approval" | "other";
 
 interface ScreenState {
   activity: CodexActivity;
-  appName: string;            // the observed app (usually "Codex")
   summary: string;            // 1–2 sentence plain-language read of the screen
   signals: string[];          // concrete cues: "permission dialog", "stack trace", …
   confidence: number;         // 0–1; drives FR-8 fallback
-  capturedAt: number;         // epoch ms
+  risky: boolean;             // destructive/irreversible action visible (safety warning)
 }
 ```
 
@@ -118,8 +115,8 @@ both consume), then FR-7, then FR-8.
 ### FR-6 — Screen understanding → `ScreenState`
 
 - **Goal:** turn raw screen capture + AX tree into a `ScreenState` the engine can
-  reason over — specifically *what Codex is doing* (planning / editing /
-  awaiting-approval / testing / error).
+  reason over — specifically whether Codex shows an `error`, is
+  `awaiting_approval`, or `other` (only the states the proactive tutor acts on).
 - **Approach:** reuse the existing capture path (`electron/handlers/capture.ts`,
   `read_app_content` in `electron/handlers/misc.ts`, AX tree via
   `helpers/read-ax-tree`). Add a classification step: a compact prompt (or a
@@ -132,10 +129,11 @@ both consume), then FR-7, then FR-8.
   `src/hooks/useRealtime.ts` (context-injection pipeline), `src/lib/samuel.ts`
   (tool definitions), new `src/lib/tutor-types.ts`.
 - **Done when:** for a live Codex session, `ScreenState.activity` is correct on
-  the 5 cases above ≥ most of the time, with a `confidence` score.
-- **Open decisions:** classify with the realtime model inline vs. a cheap
-  side model (`gpt-4o-mini`-class)? How often to reclassify (every AX tick vs.
-  debounced)? Codex desktop window vs. TUI/web — confirm the actual surface.
+  `error` / `awaiting_approval` / `other` ≥ most of the time, with a `confidence` score.
+- **Resolved:** classified by a cheap `gpt-4o-mini` vision pass folded into the
+  single watcher screen read (`check_screen_text`), deduped per unchanged screen;
+  `risky` is judged in the same pass. Collapsed from the original five states to
+  `error | awaiting_approval | other` (the rest were computed but never consumed).
 
 ### FR-7 — Decision engine → `TutorMove`
 

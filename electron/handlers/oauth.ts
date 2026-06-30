@@ -300,7 +300,7 @@ function waitForCallback(
 					`<html><body style="font-family:system-ui;text-align:center;padding:60px;` +
 						`background:#0a0e1e;color:#e2e8f0">` +
 						`<h1 style="color:#818cf8">Connected!</h1>` +
-						`<p>You can close this tab and return to Samuel.</p></body></html>`,
+						`<p>You can close this tab and return to Husky.</p></body></html>`,
 				);
 				clearTimeout(timer);
 				resolve(code);

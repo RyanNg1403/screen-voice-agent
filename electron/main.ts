@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { execFile } from "node:child_process";
 
 import { handleInvoke } from "./handlers/index.js";
+import { snapshot_user_facing_app } from "./handlers/capture.js";
 import { setWindowRef } from "./window-ref.js";
 
 let mainWindow: BrowserWindow | null = null;
@@ -12,8 +13,13 @@ let tray: Tray | null = null;
 // Show the overlay on whatever display the user is currently working on, so a
 // summon always appears where they are rather than on a stale screen. If the
 // window already overlaps the active display we leave it where they parked it.
-function showOverlay() {
+function showOverlay(focus = false) {
   if (!mainWindow) return;
+  // Snapshot the user's real frontmost app NOW — before the overlay can take
+  // focus — so even TEXT turns (where clicking the panel makes Husky frontmost)
+  // resolve the app the user was actually on, not the overlay or an arbitrary
+  // window. Mirrors the speech_started snapshot for the voice path.
+  try { snapshot_user_facing_app(); } catch { /* best-effort */ }
   const active = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const b = mainWindow.getBounds();
   const wa = active.workArea;
@@ -28,7 +34,23 @@ function showOverlay() {
       height: b.height,
     });
   }
-  mainWindow.show();
+  // focus=true is the explicit "bring Husky to me" path (clicking the dock icon /
+  // app activation): the user is deliberately switching TO Husky, so focusing is
+  // correct and carries no hijack risk — there's no other app for macOS to
+  // surface. Use show() so the panel is focused and ready to type into.
+  if (focus) {
+    mainWindow.show();
+    return;
+  }
+  // Summon path (hotkey / tray) — must NOT activate the Husky app. show() triggers
+  // a full macOS app activation; for this single-window, all-spaces, alwaysOnTop
+  // panel that activation reshuffles window focus and surfaces whatever app was
+  // previously frontmost (e.g. Discord/Chrome) instead of leaving the user in
+  // their current app. The panel is alwaysOnTop("floating"), so showInactive +
+  // moveTop floats it above the current app without stealing app focus. The user
+  // clicks it (or uses the talk hotkey) to interact — summoning never hijacks focus.
+  mainWindow.showInactive();
+  mainWindow.moveTop();
 }
 
 // Husky is a *summonable* overlay, not a permanent pin. The user dismisses it
@@ -192,8 +214,25 @@ ipcMain.handle("window:show", () => {
   showOverlay();
 });
 
+// Full quit from the in-panel control (the third quit path alongside ⌘Q and the
+// menu-bar "Quit Husky" item).
+ipcMain.handle("app:quit", () => {
+  app.quit();
+});
+
+// Continuously track the user's last REAL (non-overlay) frontmost app at a low
+// cadence. This is what makes "what app am I on" correct when the user works in
+// another app while the panel stays visible, then clicks a control / types in
+// it (which makes Husky frontmost): snapshot_user_facing_app only records a
+// non-excluded app, so lastUserFacingApp always holds the app they were just in.
+// Cheap — one ~10ms native frontmost read; covers voice, text, and click turns.
+let frontmostPollTimer: ReturnType<typeof setInterval> | null = null;
+
 app.whenReady().then(() => {
   createWindow();
+  frontmostPollTimer = setInterval(() => {
+    try { snapshot_user_facing_app(); } catch { /* best-effort */ }
+  }, 2500);
   // Show/hide the overlay (Option+Space).
   const okToggle = globalShortcut.register("Alt+Space", toggleWindow);
   if (!okToggle) console.warn("[hotkey] Option+Space registration failed");
@@ -226,11 +265,16 @@ app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
-  // Always bring the overlay onto the active display (covers both the
-  // recreate-from-scratch and already-exists cases).
-  showOverlay();
+  // Explicit app activation (dock icon / ⌘-tab to Husky): focus the overlay —
+  // the user deliberately switched to Husky, so unlike the hotkey/tray summon
+  // this should grab focus.
+  showOverlay(true);
 });
 
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
+  if (frontmostPollTimer) {
+    clearInterval(frontmostPollTimer);
+    frontmostPollTimer = null;
+  }
 });

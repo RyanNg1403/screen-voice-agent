@@ -1,19 +1,18 @@
-export type CodexActivity =
-  | "idle"
-  | "planning"
-  | "editing"
-  | "awaiting_approval"
-  | "testing"
-  | "error"
-  | "unknown";
+// Only the states the proactive tutor actually acts on. Everything else is
+// "other" (no proactive action). The on-demand tutor (FR-7) reads the raw
+// screen itself and does not consume this.
+export type CodexActivity = "error" | "awaiting_approval" | "other";
 
 export interface ScreenState {
   activity: CodexActivity;
-  appName: string;
   summary: string;
   signals: string[];
   confidence: number;
-  capturedAt: number;
+  // True when the on-screen action looks destructive/irreversible (file
+  // deletion, sudo, production data, credentials, broad permissions). Judged by
+  // the FR-6 vision read; the proactive engine OR's it with a cheap keyword
+  // backstop so a missed-by-the-model destructive approval still warns.
+  risky: boolean;
 }
 
 export type LearningStage =
@@ -27,19 +26,6 @@ export type LearningStage =
   | "request_revision"
   | "validate"
   | "transfer";
-
-export const LEARNING_STAGES: readonly LearningStage[] = [
-  "understand_workflow",
-  "inspect_project",
-  "frame_task",
-  "review_plan",
-  "supervise_impl",
-  "test_workflow",
-  "diagnose",
-  "request_revision",
-  "validate",
-  "transfer",
-];
 
 export type KnownCompetencyId =
   | "explain_workflow"

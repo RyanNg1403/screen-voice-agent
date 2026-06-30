@@ -12,6 +12,7 @@ type ToggleKey =
   | "privacy.audio_record"
   | "privacy.screen_read"
   | "privacy.voice_input"
+  | "privacy.wake_word"
   | "privacy.computer_use"
   | "privacy.bypass_approvals"
   | "privacy.local_time"
@@ -159,12 +160,30 @@ export function SettingsPanel({ visible, prefs, onToggle, onResetPrefs, onClose 
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Voice Input</span>
               <span className="settings-toggle-desc">
-                Let Husky hear your voice for conversation and the wake word
+                Let Husky hear your voice during a conversation you've started
               </span>
             </div>
             <div
               className={`settings-switch ${prefs["privacy.voice_input"] ? "settings-switch-on" : ""}`}
               onClick={() => onToggle("privacy.voice_input")}
+            >
+              <div className="settings-switch-thumb" />
+            </div>
+          </label>
+
+          <label className="settings-toggle-row">
+            <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Wake Word (hands-free start)</span>
+              <span className="settings-toggle-desc">
+                Off by default. When off, Husky's mic stays closed while asleep —
+                you start it with the Start button or ⌃⌥Space. When on, an asleep
+                Husky listens for a wake phrase (mic stays open and sends short
+                clips for transcription). Requires Voice Input.
+              </span>
+            </div>
+            <div
+              className={`settings-switch ${prefs["privacy.wake_word"] ? "settings-switch-on" : ""}`}
+              onClick={() => onToggle("privacy.wake_word")}
             >
               <div className="settings-switch-thumb" />
             </div>
