@@ -172,6 +172,14 @@ const SCHEMA: Record<string, PropSchema> = {
     type: "boolean", default: false,
     aliases: ["privacy.voice", "privacy.mic", "privacy.microphone_input"],
   },
+  // Hands-free start. When ON, an idle/asleep Husky keeps the mic open and
+  // uploads short clips to transcription to catch a wake phrase. Default OFF:
+  // asleep means the mic is CLOSED — you start with the button or ⌃⌥Space.
+  // Gated by privacy.voice_input (wake word is a sub-feature of voice input).
+  "privacy.wake_word": {
+    type: "boolean", default: false,
+    aliases: ["privacy.wake", "privacy.hotword", "privacy.wakeword", "wake.word"],
+  },
   "privacy.computer_use": {
     type: "boolean", default: false,
     aliases: ["privacy.desktop_automation", "privacy.cua", "privacy.automation"],

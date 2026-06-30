@@ -1,0 +1,15 @@
+# Husky — Full Test Plan (Group A + Group B)
+
+Run after `npm run electron:dev`. Each row: what the feature is *for*, what to do,
+and what you should see.
+
+| Feature | Purpose (why it exists) | What to do | Expected outcome |
+|---|---|---|---|
+| **Summon / dismiss** (overlay) | Husky is a companion that floats over Codex, not another window to alt-tab to — you call it when you need it and tuck it away when you don't, so it never blocks your work. | Press **⌥Space** to show/hide. With another app focused, press **⌃⌥Space**. | Panel appears on the screen you're working on and hides on a second press; **⌃⌥Space** starts/stops the conversation even while the panel is hidden. |
+| **Next-step guidance** (FR-7) | The core of the product: teach a non-coder to *supervise* the agent by giving the smallest useful next step, so they learn to make the call instead of being handed the answer. | Work in Codex and ask for help, or click **Done** / **Why?**. | One small, specific next step — a question or a pointer — relevant to what's on screen, not a full solution. |
+| **Hint ladder** (FR-7) | A good tutor doesn't dump the answer. Help escalates only as needed, so the learner builds the skill rather than copying. | Say "I'm stuck" repeatedly on the same step. | Hints get progressively more specific — a guiding question first, a direct pointer only if you stay stuck. |
+| **Confidence / clarify** (FR-8) | When Husky isn't sure what's on screen, a confident wrong instruction erodes trust. Asking instead keeps the learner safe and the guidance honest. | Show an ambiguous or hard-to-read screen, then ask for help. | Husky asks a short clarifying question instead of guessing. |
+| **Progress view** (FR-9) | Make the session feel like *learning*, not just Q&A — the learner can see the stage they're in and the supervision skills they've shown. | Get a few pieces of guidance over a short session. | The strip (below the panel, dark/ice-themed) advances the stage and fills skill dots as you demonstrate competencies. |
+| **Proactive help** (FR-10) | The "watching over your shoulder" value — Husky catches you when you're stuck or looping *without* you having to ask. | Turn on **Settings → Privacy → Screen Watch**; leave a failed test / stack trace on screen ~30s. | Exactly one short nudge after it persists; no repeats during the cooldown. |
+| **Risk warning** (FR-10) | Stop a non-technical user from blindly approving something destructive — the safety guardrail. | Trigger a risky approval (e.g. a delete-files or production command). | A direct warning to pause and check, **before** you approve (fires immediately, no waiting). |
+| **Session report** (FR-13) | Close the loop so learning compounds: what you did, the skills you showed, and what to focus on next time. | End the session (hang-up button, or let it auto-sleep). | A report sheet (Husky-themed): outcome, time / hints / nudges, skills demonstrated, concepts, and a next focus tied to what you actually practiced. Close dismisses it. |

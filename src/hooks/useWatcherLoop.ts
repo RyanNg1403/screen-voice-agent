@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { invoke } from "../lib/invoke-bridge";
+import { createProactiveRunnerState, runProactiveTick, type ScreenRead } from "../lib/proactive-runner";
 import { runWatchEvaluation, type WatchAlert } from "../lib/watcher-eval";
+import type { TutorMove } from "../lib/tutor-types";
 import type { ConnectionStatus } from "./useRealtime";
 
 const WATCHER_INTERVAL_MS = 20_000;
@@ -24,6 +26,7 @@ export function useWatcherLoop(
   learningActive?: boolean,
   screenWatchEnabled = true,
   audioListenEnabled = true,
+  onProactiveMove?: (move: TutorMove) => void,
 ) {
   const agentStateRef = useRef(agentState);
   agentStateRef.current = agentState;
@@ -37,6 +40,9 @@ export function useWatcherLoop(
   const audioListenRef = useRef(audioListenEnabled);
   audioListenRef.current = audioListenEnabled;
   const inFlightRef = useRef(false);
+  const onProactiveMoveRef = useRef(onProactiveMove);
+  onProactiveMoveRef.current = onProactiveMove;
+  const proactiveRunnerRef = useRef(createProactiveRunnerState());
   // Tracks whether we currently hold the watcher-side slot of the shared
   // audio capture. Used to decide when to acquire/release per tick.
   const audioHeldRef = useRef(false);
@@ -72,6 +78,7 @@ export function useWatcherLoop(
 
       const hasScreenTriggers = enabled.some((w) => w.source === "screen" || w.source === "both");
       const hasAudioTriggers = enabled.some((w) => w.source === "audio" || w.source === "both");
+      const wantsProactiveScreen = Boolean(onProactiveMoveRef.current);
       // Audio capture is gated by BOTH a watcher needing it and the user
       // having privacy.audio_listen enabled. Without this AND, flipping
       // audio_listen off in Settings wouldn't actually stop watcher-side
@@ -91,19 +98,31 @@ export function useWatcherLoop(
         console.log("[watcher-standalone] released audio capture");
       }
 
-      if (enabled.length === 0) return;
+      if (enabled.length === 0 && !wantsProactiveScreen) return;
 
       inFlightRef.current = true;
 
       try {
-        // Screen content: capture and describe via GPT-4o-mini
-        let screenText = "";
-        if (hasScreenTriggers && screenWatchRef.current) {
+        // Screen content: one gpt-4o-mini vision read → structured screen state.
+        let read: ScreenRead | null = null;
+        if ((hasScreenTriggers || wantsProactiveScreen) && screenWatchRef.current) {
           try {
-            screenText = await invoke<string>("check_screen_text") ?? "";
+            read = await invoke<ScreenRead | null>("check_screen_text");
           } catch {
             // check_screen_text may not exist yet; fall back to nothing
           }
+        }
+        const screenText = read?.summary ?? "";
+
+        const onMove = onProactiveMoveRef.current;
+        if (onMove && screenWatchRef.current) {
+          // Pass the already-fetched read (possibly null for an unchanged screen —
+          // the runner reuses its cached read so persistence accrues).
+          proactiveRunnerRef.current = await runProactiveTick(
+            proactiveRunnerRef.current,
+            onMove,
+            read,
+          );
         }
 
         // Audio content: language-agnostic chunk via the watcher-side check.
@@ -119,9 +138,11 @@ export function useWatcherLoop(
           }
         }
 
-        const { triggerCount } = await runWatchEvaluation({ audioText, screenText });
-        if (triggerCount > 0) {
-          console.log(`[watcher-standalone] ${triggerCount} trigger(s) fired`);
+        if (enabled.length > 0) {
+          const { triggerCount } = await runWatchEvaluation({ audioText, screenText });
+          if (triggerCount > 0) {
+            console.log(`[watcher-standalone] ${triggerCount} trigger(s) fired`);
+          }
         }
       } catch (e) {
         console.error("[watcher-standalone] error:", e);

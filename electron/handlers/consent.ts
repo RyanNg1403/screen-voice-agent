@@ -104,7 +104,7 @@ export async function request_privacy_consent(
 		// Empty title matches macOS TCC styling — the alert sheet shows the
 		// app name as the heading and uses message/detail for the body.
 		title: "",
-		message: `Samuel would like to access ${access}.`,
+		message: `Husky would like to access ${access}.`,
 		detail: purpose,
 		buttons: ["Don\u2019t Allow", "Allow"],
 		defaultId: 1,

@@ -135,15 +135,15 @@ export function MemoryBrowser({ visible, onClose }: Props) {
       secretNames.length === 0;
 
   return (
-    <div className="settings-overlay" onClick={onClose}>
-      <div className="settings-panel memory-browser-panel" onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-overlay" onClick={onClose}>
+      <div className="sheet-panel memory-browser-panel" onClick={(e) => e.stopPropagation()}>
         <div className="settings-header">
           <h3>Memory Browser</h3>
           <button className="settings-close" onClick={onClose}>&times;</button>
         </div>
 
         <p className="memory-browser-help">
-          Everything Samuel remembers about you, by category. &ldquo;Forget&rdquo;
+          Everything Husky remembers about you, by category. &ldquo;Forget&rdquo;
           deletes that single item from <code>~/.samuel/memory.json</code> right
           away.
         </p>

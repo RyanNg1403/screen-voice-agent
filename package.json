@@ -16,6 +16,7 @@
     "electron:compile": "tsc -p electron/tsconfig.json && cp electron/package.json dist-electron/package.json",
     "electron:dev": "npm run electron:compile && concurrently \"vite\" \"unset ELECTRON_RUN_AS_NODE && NODE_ENV=development electron dist-electron/main.js\"",
     "electron:build": "npm run ui:build && npm run electron:compile && electron-builder",
+    "test:group-b": "node --import tsx --test src/hooks/useLessonState.test.ts src/lib/proactive-tutor.test.ts",
     "release": "scripts/release.sh",
     "release:signed": "scripts/release-signed.sh",
     "cli:build": "tsc -p tsconfig.cli.json",
@@ -55,7 +56,7 @@
   },
   "build": {
     "appId": "com.samuel.assistant",
-    "productName": "Samuel",
+    "productName": "Husky",
     "directories": {
       "output": "dist-app"
     },
@@ -92,18 +93,18 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Samuel listens for the wake word and your voice — only when you turn on Voice Input or Audio Listening in Settings.",
-        "NSScreenCaptureUsageDescription": "Samuel reads your screen to help with what you're working on — only when you turn on Screen Watch or Screen Read in Settings.",
-        "NSAppleEventsUsageDescription": "Samuel controls other apps on your Mac on your behalf — only when you turn on Computer Use in Settings.",
-        "NSSpeechRecognitionUsageDescription": "Samuel converts your speech to text — only when you turn on Voice Input in Settings.",
-        "NSLocationUsageDescription": "Samuel uses your location to answer location-aware questions — only when you turn on Location in Settings.",
-        "NSLocationWhenInUseUsageDescription": "Samuel uses your location to answer location-aware questions — only when you turn on Location in Settings.",
-        "NSDesktopFolderUsageDescription": "Samuel can read files you ask it to look at, on your Desktop.",
-        "NSDocumentsFolderUsageDescription": "Samuel can read files you ask it to look at, in your Documents.",
-        "NSDownloadsFolderUsageDescription": "Samuel can read files you ask it to look at, in your Downloads.",
+        "NSMicrophoneUsageDescription": "Husky listens for the wake word and your voice — only when you turn on Voice Input or Audio Listening in Settings.",
+        "NSScreenCaptureUsageDescription": "Husky reads your screen to help with what you're working on — only when you turn on Screen Watch or Screen Read in Settings.",
+        "NSAppleEventsUsageDescription": "Husky controls other apps on your Mac on your behalf — only when you turn on Computer Use in Settings.",
+        "NSSpeechRecognitionUsageDescription": "Husky converts your speech to text — only when you turn on Voice Input in Settings.",
+        "NSLocationUsageDescription": "Husky uses your location to answer location-aware questions — only when you turn on Location in Settings.",
+        "NSLocationWhenInUseUsageDescription": "Husky uses your location to answer location-aware questions — only when you turn on Location in Settings.",
+        "NSDesktopFolderUsageDescription": "Husky can read files you ask it to look at, on your Desktop.",
+        "NSDocumentsFolderUsageDescription": "Husky can read files you ask it to look at, in your Documents.",
+        "NSDownloadsFolderUsageDescription": "Husky can read files you ask it to look at, in your Downloads.",
         "LSApplicationCategoryType": "public.app-category.productivity",
         "ITSAppUsesNonExemptEncryption": false,
-        "NSHumanReadableCopyright": "© 2026 Samuel. All rights reserved."
+        "NSHumanReadableCopyright": "© 2026 Husky. All rights reserved."
       }
     },
     "dmg": {

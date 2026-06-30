@@ -9,6 +9,7 @@ import {
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { getUserFacingTargetApp } from "./capture";
+import { getFrontmostAppName, isExcludedApp } from "./frontmost";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -106,8 +107,6 @@ export async function read_app_content(args: {
 	return combined;
 }
 
-const EXCLUDED_APPS = ["samuel", "cursor", "electron"];
-
 function getUserFacingApp(): string | null {
 	const apps = getVisibleApps(1);
 	return apps.length > 0 ? apps[0] : null;
@@ -133,7 +132,7 @@ end tell`,
 			const trimmed = name.trim();
 			if (!trimmed) continue;
 			const lower = trimmed.toLowerCase();
-			if (EXCLUDED_APPS.some((ex) => lower.includes(ex))) continue;
+			if (isExcludedApp(trimmed)) continue;
 			if (seen.has(lower)) continue;
 			seen.add(lower);
 			results.push(trimmed);
@@ -286,28 +285,12 @@ function runDesktopAction(args: string[]): string {
 	}
 }
 
-// Returns the localized name of the currently frontmost app, or null if
-// the helper failed. Cheap (~10ms shell-out). Used by the focus guard
-// before every FALLBACK desktop_* call so we don't send keystrokes into
-// the wrong window after the user switched apps.
-function frontmostApp(): string | null {
-	try {
-		const out = execFileSync(findHelper("desktop-action"), ["frontmost-app"], {
-			encoding: "utf-8",
-			timeout: 2000,
-		}).trim();
-		return out && out !== "UNKNOWN" ? out : null;
-	} catch {
-		return null;
-	}
-}
-
 // Throws an Error whose .message is a JSON blob that the tool wrapper in
 // samuel.ts recognizes as a structured `focus_lost` error. The model is
 // instructed (in the prompt) to verbalize this rather than silently retry.
 function assertFocus(targetApp: string | undefined, action: string): void {
 	if (!targetApp) return; // backward-compat: callers without target_app skip the check
-	const focused = frontmostApp();
+	const focused = getFrontmostAppName(); // canonical native-first resolver
 	if (!focused) return; // can't determine — fail open
 	// Case-insensitive contains either way (target may be "Chrome" while the
 	// frontmost is "Google Chrome"; both match).

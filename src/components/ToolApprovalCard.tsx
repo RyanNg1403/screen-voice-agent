@@ -175,7 +175,7 @@ export function ToolApprovalCard({ entry, onApprove, onDeny, onAlwaysAllow, onAl
 					<button
 						className="tool-approval-btn tool-approval-btn-always"
 						onClick={() => onAlwaysAllow(entry.id, appName)}
-						title={`Always allow Samuel to access ${appName}`}
+						title={`Always allow Husky to access ${appName}`}
 					>
 						Always
 					</button>
@@ -196,7 +196,7 @@ export function ToolApprovalCard({ entry, onApprove, onDeny, onAlwaysAllow, onAl
 
 			{isAppScoped && (
 				<div className="tool-approval-app-hint">
-					Samuel wants to access <strong>{appName}</strong>
+					Husky wants to access <strong>{appName}</strong>
 				</div>
 			)}
 		</div>

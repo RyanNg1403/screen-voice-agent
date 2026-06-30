@@ -1521,23 +1521,14 @@ html, body, #root {
 }
 
 /* ── Settings Panel ──────────────────────────────────────── */
+/* Settings is a full-window in-app page (not a modal). It fills the window
+   body below its own title bar and scrolls internally. */
 .settings-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 300;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(8px);
+  flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: fade-in 0.2s ease both;
-  /* Modal sits on top of sibling .drag-region elements (header bar, character
-     stage). On macOS Electron, -webkit-app-region: drag is a screen-space
-     hit-test that ignores z-index, so without an explicit no-drag opt-out the
-     OS eats clicks on the close button and toggles inside the overlay as
-     window-drags. Opting the whole overlay out restores normal click handling
-     for everything inside (settings, memory browser, privacy policy). */
-  -webkit-app-region: no-drag;
+  flex-direction: column;
+  animation: fade-in 0.16s ease both;
 }
 
 @keyframes fade-in {
@@ -1546,33 +1537,56 @@ html, body, #root {
 }
 
 .settings-panel {
-  width: 360px;
-  max-height: 80vh;
-  background: rgba(15, 20, 40, 0.95);
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  border-radius: 20px;
-  padding: 24px;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 8px 18px 18px;
   overflow-y: auto;
 }
 
+/* Page title bar — doubles as the window drag handle on this page. */
 .settings-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
+  gap: 10px;
+  padding: 12px 14px 12px 10px;
+  border-bottom: 1px solid var(--c-line, rgba(255, 255, 255, 0.06));
+  flex-shrink: 0;
 }
 
 .settings-header h3 {
   margin: 0;
-  font-size: 18px;
-  color: #e2e8f0;
+  font-size: 16px;
+  color: var(--c-ink, #eef1f4);
   font-weight: 600;
+  flex: 1;
+}
+
+.settings-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: var(--c-ink-dim, #98a2b0);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.settings-back:hover {
+  color: var(--c-ink, #eef1f4);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .settings-close {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.4);
   font-size: 22px;
   cursor: pointer;
   padding: 0 4px;
@@ -1580,7 +1594,7 @@ html, body, #root {
 }
 
 .settings-close:hover {
-  color: #fff;
+  color: var(--c-ink, #fff);
 }
 
 .settings-section {
@@ -1641,7 +1655,7 @@ html, body, #root {
 }
 
 .settings-switch-on {
-  background: rgba(99, 102, 241, 0.7);
+  background: rgba(116, 174, 214, 0.7);
 }
 
 .settings-switch-thumb {
@@ -1662,13 +1676,13 @@ html, body, #root {
 .settings-link {
   display: block;
   font-size: 14px;
-  color: #818cf8;
+  color: #74aed6;
   text-decoration: none;
   margin-bottom: 8px;
 }
 
 .settings-link:hover {
-  color: #a78bfa;
+  color: #9ec8e6;
   text-decoration: underline;
 }
 
@@ -1725,9 +1739,9 @@ html, body, #root {
   padding: 8px 12px;
   margin-top: 4px;
   background: transparent;
-  border: 1px solid rgba(6, 182, 212, 0.35);
+  border: 1px solid rgba(116, 174, 214, 0.35);
   border-radius: 8px;
-  color: #67e8f9;
+  color: #9ec8e6;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -1735,8 +1749,8 @@ html, body, #root {
   transition: background 0.15s, border-color 0.15s;
 }
 .settings-link-btn:hover {
-  background: rgba(6, 182, 212, 0.1);
-  border-color: rgba(6, 182, 212, 0.55);
+  background: rgba(116, 174, 214, 0.1);
+  border-color: rgba(116, 174, 214, 0.55);
 }
 
 .settings-export-note {
@@ -1767,8 +1781,8 @@ html, body, #root {
   background: rgba(34, 197, 94, 0.06);
 }
 .settings-key-status-trial {
-  border-color: rgba(6, 182, 212, 0.25);
-  background: rgba(6, 182, 212, 0.05);
+  border-color: rgba(116, 174, 214, 0.25);
+  background: rgba(116, 174, 214, 0.05);
 }
 .settings-key-badge {
   flex-shrink: 0;
@@ -1786,8 +1800,8 @@ html, body, #root {
   color: #4ade80;
 }
 .settings-key-status-trial .settings-key-badge {
-  background: rgba(6, 182, 212, 0.18);
-  color: #67e8f9;
+  background: rgba(116, 174, 214, 0.18);
+  color: #9ec8e6;
 }
 .settings-key-text {
   font-size: 12px;
@@ -1825,7 +1839,7 @@ html, body, #root {
 }
 .settings-trial-bar-fill {
   height: 100%;
-  background: rgba(6, 182, 212, 0.6);
+  background: rgba(116, 174, 214, 0.6);
   transition: width 0.2s ease;
 }
 .settings-trial-bar-exhausted {
@@ -1854,7 +1868,7 @@ html, body, #root {
   box-sizing: border-box;
 }
 .settings-key-input:focus {
-  border-color: rgba(6, 182, 212, 0.45);
+  border-color: rgba(116, 174, 214, 0.45);
 }
 .settings-key-form-row {
   display: flex;
@@ -1870,7 +1884,7 @@ html, body, #root {
 .settings-key-link {
   margin-left: auto;
   font-size: 11px;
-  color: #67e8f9;
+  color: #9ec8e6;
   text-decoration: none;
 }
 .settings-key-link:hover {
@@ -1934,7 +1948,7 @@ html, body, #root {
 .privacy-policy-body h4 {
   font-size: 14px;
   font-weight: 600;
-  color: #67e8f9;
+  color: #9ec8e6;
   margin: 18px 0 8px 0;
 }
 .privacy-policy-body p { margin: 0 0 10px 0; }
@@ -2246,4 +2260,501 @@ html, body, #root {
 .tool-approval-app-hint strong {
   color: rgba(6, 182, 212, 0.8);
   font-weight: 600;
+}
+
+/* ============================================================
+   Husky coach panel (FR-3) — calm, informative tutor surface.
+   Replaces the Rive orb. Warm graphite card, one amber accent
+   reserved for the current step, monospace utility labels.
+   All classes namespaced .coach* to avoid colliding with the
+   legacy character/analysis styles above.
+   ============================================================ */
+
+.coach-window {
+  /* Palette derived from the Husky logo: cool charcoal fur + snow white,
+     with the husky's ice-blue eye as the single accent. */
+  --c-bg: #1a1d23;
+  --c-soft: #232830;
+  --c-inset: #15171c;
+  --c-line: rgba(255, 255, 255, 0.06);
+  --c-line-strong: rgba(255, 255, 255, 0.11);
+  --c-ink: #eef1f4;
+  --c-ink-dim: #98a2b0;
+  --c-ink-faint: #687280;
+  --c-accent: #74aed6;
+  --c-accent-soft: rgba(116, 174, 214, 0.13);
+  --c-safe: #8aa0b4;
+
+  background: var(--c-bg);
+  color: var(--c-ink);
+  border: 1px solid var(--c-line-strong);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.coach {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 18px 16px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Pushes the ask input + observe footer to the bottom of the window,
+   chat-style, so any extra height reads as a normal app rather than a void. */
+.coach-spacer {
+  flex: 1;
+  min-height: 10px;
+}
+
+/* Guidance card — the hero. A left spine (margin-note device) carries
+   state via colour; everything else stays quiet. */
+.coach-guidance {
+  position: relative;
+  background: var(--c-soft);
+  border: 1px solid var(--c-line);
+  border-left: 2px solid var(--c-line-strong);
+  border-radius: 12px;
+  padding: 13px 16px 15px;
+  transition: border-left-color 0.3s ease;
+}
+.coach-guidance[data-state="active"],
+.coach-guidance[data-state="thinking"] {
+  border-left-color: var(--c-accent);
+}
+.coach-guidance[data-state="ready"] {
+  border-left-color: var(--c-safe);
+}
+
+.coach-eyebrow {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: var(--c-ink-dim);
+  margin-bottom: 7px;
+}
+.coach-guidance[data-state="active"] .coach-eyebrow,
+.coach-guidance[data-state="thinking"] .coach-eyebrow {
+  color: var(--c-accent);
+}
+.coach-guidance[data-state="ready"] .coach-eyebrow {
+  color: var(--c-safe);
+}
+
+.coach-step {
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--c-ink);
+  margin: 0;
+  white-space: pre-wrap;
+  max-height: 240px;
+  overflow-y: auto;
+  animation: coach-rise 0.24s ease;
+}
+.coach-step.is-empty {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--c-ink-dim);
+}
+@keyframes coach-rise {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+
+.coach-thinking {
+  height: 2px;
+  border-radius: 2px;
+  margin-top: 11px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+.coach-thinking::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: 38%;
+  background: linear-gradient(90deg, transparent, var(--c-accent), transparent);
+  animation: coach-sweep 1.3s ease-in-out infinite;
+}
+@keyframes coach-sweep {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(360%); }
+}
+
+/* Lightweight controls */
+.coach-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.coach-btn {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--c-ink-dim);
+  border: 1px solid var(--c-line-strong);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.coach-btn:hover {
+  color: var(--c-ink);
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.03);
+}
+.coach-btn-primary {
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+  border-color: rgba(116, 174, 214, 0.35);
+}
+.coach-btn-primary:hover {
+  background: rgba(116, 174, 214, 0.2);
+  color: #93c2e4;
+  border-color: rgba(116, 174, 214, 0.5);
+}
+
+.coach-start {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 12px;
+  border-radius: 11px;
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+  border: 1px solid rgba(116, 174, 214, 0.3);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.coach-start:hover {
+  background: rgba(116, 174, 214, 0.18);
+}
+
+/* Ask input */
+.coach-ask {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.coach-ask input {
+  flex: 1;
+  background: var(--c-inset);
+  border: 1px solid var(--c-line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--c-ink);
+  font-size: 13.5px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.coach-ask input::placeholder {
+  color: var(--c-ink-faint);
+}
+.coach-ask input:focus {
+  border-color: rgba(116, 174, 214, 0.4);
+}
+.coach-ask input:disabled {
+  opacity: 0.5;
+}
+.coach-send {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--c-soft);
+  border: 1px solid var(--c-line-strong);
+  color: var(--c-ink-dim);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.coach-send:hover:not(:disabled) {
+  color: var(--c-accent);
+  border-color: rgba(116, 174, 214, 0.4);
+}
+.coach-send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Persistent observation indicator */
+.coach-observe {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  color: var(--c-ink-faint);
+}
+.coach-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--c-ink-faint);
+  flex-shrink: 0;
+}
+.coach-observe[data-active="true"] {
+  color: var(--c-safe);
+}
+.coach-observe[data-active="true"] .coach-dot {
+  background: var(--c-safe);
+  animation: coach-pulse 2.6s ease-in-out infinite;
+}
+@keyframes coach-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(116, 174, 214, 0.45); }
+  50% { box-shadow: 0 0 0 5px rgba(116, 174, 214, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coach-step,
+  .coach-thinking::after,
+  .coach-observe[data-active="true"] .coach-dot {
+    animation: none !important;
+  }
+  .coach-step {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* Header brand — logo badge + wordmark */
+.coach-brand-mark {
+  width: 23px;
+  height: 23px;
+  border-radius: 7px;
+  object-fit: cover;
+  background: #f5f4f1;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  flex-shrink: 0;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+.coach-brand-name {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--c-ink);
+}
+
+/* Tool-approval cards float above whichever page is shown (coach or settings)
+   so a pending decision is never hidden. Mounted at the app root. */
+.approval-layer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  pointer-events: none;
+}
+.approval-layer > * {
+  pointer-events: auto;
+}
+
+/* Modal sheet for nested viewers (Privacy Policy, Terms, Memory Browser) that
+   pop over the in-app Settings page. .settings-overlay is now an in-flow page,
+   so these need their own fixed/centered modal chrome. */
+.sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fade-in 0.16s ease both;
+  -webkit-app-region: no-drag;
+}
+.sheet-panel {
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 40px);
+  background: rgba(31, 35, 42, 0.98);
+  border: 1px solid var(--c-line-strong, rgba(255, 255, 255, 0.13));
+  border-radius: 18px;
+  padding: 18px 20px;
+  overflow-y: auto;
+}
+
+/* ── Group B tutoring progress strip ─────────────────────── */
+.tutor-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px 18px 14px;
+  border-top: 1px solid var(--c-line, rgba(255, 255, 255, 0.06));
+  color: var(--c-ink-dim, #98a2b0);
+  -webkit-app-region: no-drag;
+}
+.tutor-progress-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.tutor-progress-kicker,
+.session-report-kicker {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-ink-faint, #687280);
+}
+.tutor-progress-main strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--c-ink, #eef1f4);
+  font-size: 13px;
+  font-weight: 600;
+}
+.tutor-progress-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+}
+.tutor-progress-metrics span {
+  border: 1px solid var(--c-line, rgba(255, 255, 255, 0.06));
+  border-radius: 999px;
+  padding: 2px 9px;
+  background: var(--c-inset, #16171a);
+  color: var(--c-ink-dim, #98a2b0);
+  white-space: nowrap;
+}
+.tutor-progress-skills {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(14px, 1fr));
+  gap: 5px;
+}
+.tutor-progress-skill {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--c-line-strong, rgba(255, 255, 255, 0.12));
+}
+.tutor-progress-skill[data-status="attempted"] {
+  background: rgba(116, 174, 214, 0.4);
+}
+.tutor-progress-skill[data-status="demonstrated"] {
+  background: var(--c-accent, #74aed6);
+}
+
+/* ── End-of-session report sheet ─────────────────────────── */
+.session-report {
+  position: fixed;
+  inset: auto 12px 12px 12px;
+  z-index: 450;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  max-height: min(72vh, 520px);
+  overflow-y: auto;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--c-line-strong, rgba(255, 255, 255, 0.12));
+  background: var(--c-bg, #1a1d23);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.45);
+  color: var(--c-ink, #eef1f4);
+  -webkit-app-region: no-drag;
+}
+.session-report-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.session-report-header h2 {
+  margin: 3px 0 0;
+  font-size: 16px;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--c-ink, #eef1f4);
+}
+.session-report-header button {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--c-line, rgba(255, 255, 255, 0.06));
+  border-radius: 9px;
+  background: transparent;
+  color: var(--c-ink-dim, #98a2b0);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.session-report-header button:hover,
+.session-report-header button:focus-visible {
+  color: var(--c-ink, #eef1f4);
+  border-color: rgba(116, 174, 214, 0.45);
+  outline: none;
+}
+.session-report-outcome {
+  margin: 0;
+  color: var(--c-ink, #eef1f4);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.session-report-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.session-report-stats div {
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: var(--c-soft, #232830);
+  border: 1px solid var(--c-line, rgba(255, 255, 255, 0.06));
+}
+.session-report-stats dt,
+.session-report-section h3 {
+  margin: 0 0 4px;
+  color: var(--c-ink-faint, #687280);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.session-report-stats dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--c-ink, #eef1f4);
+  font-size: 14px;
+  font-weight: 600;
+}
+.session-report-section p {
+  margin: 0;
+  color: var(--c-ink-dim, #98a2b0);
+  font-size: 12.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+@media (max-height: 520px) {
+  .tutor-progress {
+    padding-bottom: 10px;
+  }
+  .tutor-progress-metrics span:nth-child(n + 3) {
+    display: none;
+  }
+  .session-report {
+    max-height: calc(100vh - 24px);
+  }
 }

@@ -2,6 +2,9 @@ declare global {
   interface Window {
     __electronWindow: {
       setSize: (width: number, height: number) => void;
+      hide: () => void;
+      show: () => void;
+      quit: () => void;
     };
   }
 }
@@ -18,6 +21,15 @@ export class LogicalSize {
 class ElectronWindow {
   setSize(size: LogicalSize) {
     window.__electronWindow?.setSize(size.width, size.height);
+  }
+  hide() {
+    window.__electronWindow?.hide();
+  }
+  show() {
+    window.__electronWindow?.show();
+  }
+  quit() {
+    window.__electronWindow?.quit();
   }
 }
 

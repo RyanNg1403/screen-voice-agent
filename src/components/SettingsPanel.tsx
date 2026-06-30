@@ -12,6 +12,7 @@ type ToggleKey =
   | "privacy.audio_record"
   | "privacy.screen_read"
   | "privacy.voice_input"
+  | "privacy.wake_word"
   | "privacy.computer_use"
   | "privacy.bypass_approvals"
   | "privacy.local_time"
@@ -50,7 +51,7 @@ export function SettingsPanel({ visible, prefs, onToggle, onResetPrefs, onClose 
     setExportNote(null);
     try {
       // Send the renderer-side localStorage prefs into the export so the
-      // single output file is genuinely complete (everything Samuel knows
+      // single output file is genuinely complete (everything Husky knows
       // about you across both processes).
       const localStoragePrefs: Record<string, unknown> = {};
       for (let i = 0; i < localStorage.length; i++) {
@@ -81,7 +82,7 @@ export function SettingsPanel({ visible, prefs, onToggle, onResetPrefs, onClose 
   }
 
   async function clearMemory() {
-    if (!confirm("Clear all of Samuel's memories (preferences, vocabulary, corrections)? This cannot be undone.")) return;
+    if (!confirm("Clear all of Husky's memories (preferences, vocabulary, corrections)? This cannot be undone.")) return;
     setClearing("memory");
     try {
       await invoke("memory_clear");
@@ -123,13 +124,16 @@ export function SettingsPanel({ visible, prefs, onToggle, onResetPrefs, onClose 
   }
 
   return (
-    <div className="settings-overlay" onClick={onClose}>
-      <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
-        <div className="settings-header">
-          <h3>Settings</h3>
-          <button className="settings-close" onClick={onClose}>&times;</button>
-        </div>
-
+    <div className="settings-overlay">
+      <div className="settings-header drag-region">
+        <button className="settings-back" onClick={onClose} title="Back" aria-label="Back">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m15 18-6-6 6-6" />
+          </svg>
+        </button>
+        <h3>Settings</h3>
+      </div>
+      <div className="settings-panel">
         <ApiKeySection />
 
         <div className="settings-section">
@@ -141,7 +145,7 @@ export function SettingsPanel({ visible, prefs, onToggle, onResetPrefs, onClose 
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Screen Reading</span>
               <span className="settings-toggle-desc">
-                Let Samuel read on-screen content (apps, browser tabs) when you ask
+                Let Husky read on-screen content (apps, browser tabs) when you ask
               </span>
             </div>
             <div
@@ -156,7 +160,7 @@ export function SettingsPanel({ visible, prefs, onToggle, onResetPrefs, onClose 
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Voice Input</span>
               <span className="settings-toggle-desc">
-                Let Samuel hear your voice for conversation and the wake word
+                Let Husky hear your voice during a conversation you've started
               </span>
             </div>
             <div
@@ -169,9 +173,27 @@ export function SettingsPanel({ visible, prefs, onToggle, onResetPrefs, onClose 
 
           <label className="settings-toggle-row">
             <div className="settings-toggle-info">
+              <span className="settings-toggle-label">Wake Word (hands-free start)</span>
+              <span className="settings-toggle-desc">
+                Off by default. When off, Husky's mic stays closed while asleep —
+                you start it with the Start button or ⌃⌥Space. When on, an asleep
+                Husky listens for a wake phrase (mic stays open and sends short
+                clips for transcription). Requires Voice Input.
+              </span>
+            </div>
+            <div
+              className={`settings-switch ${prefs["privacy.wake_word"] ? "settings-switch-on" : ""}`}
+              onClick={() => onToggle("privacy.wake_word")}
+            >
+              <div className="settings-switch-thumb" />
+            </div>
+          </label>
+
+          <label className="settings-toggle-row">
+            <div className="settings-toggle-info">
               <span className="settings-toggle-label">Computer Use</span>
               <span className="settings-toggle-desc">
-                Let Samuel click, type, and operate apps on your desktop
+                Let Husky click, type, and operate apps on your desktop
               </span>
             </div>
             <div
@@ -186,7 +208,7 @@ export function SettingsPanel({ visible, prefs, onToggle, onResetPrefs, onClose 
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Bypass Approval Prompts (YOLO)</span>
               <span className="settings-toggle-desc">
-                Auto-approve actions without asking — Samuel can click, type, run
+                Auto-approve actions without asking — Husky can click, type, run
                 tools, and read/write files unprompted. It still asks before
                 turning on a NEW capability it doesn't have yet (continuous screen
                 watch / ambient audio listening). Use with care.
@@ -206,7 +228,7 @@ export function SettingsPanel({ visible, prefs, onToggle, onResetPrefs, onClose 
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Proactive Screen Watch</span>
               <span className="settings-toggle-desc">
-                Let Samuel watch your screen between turns — powers language hints, watch-list triggers, and other ambient screen alerts
+                Let Husky watch your screen between turns — powers language hints, watch-list triggers, and other ambient screen alerts
               </span>
             </div>
             <div
@@ -221,7 +243,7 @@ export function SettingsPanel({ visible, prefs, onToggle, onResetPrefs, onClose 
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Proactive Audio Listening</span>
               <span className="settings-toggle-desc">
-                Let Samuel passively listen for ambient audio between turns
+                Let Husky passively listen for ambient audio between turns
               </span>
             </div>
             <div
@@ -236,7 +258,7 @@ export function SettingsPanel({ visible, prefs, onToggle, onResetPrefs, onClose 
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">On-Demand Audio Recording</span>
               <span className="settings-toggle-desc">
-                Let Samuel capture system audio when you ask ("record this", "listen to this clip")
+                Let Husky capture system audio when you ask ("record this", "listen to this clip")
               </span>
             </div>
             <div
@@ -251,7 +273,7 @@ export function SettingsPanel({ visible, prefs, onToggle, onResetPrefs, onClose 
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Local Time</span>
               <span className="settings-toggle-desc">
-                Allow Samuel to know your local time and timezone
+                Allow Husky to know your local time and timezone
               </span>
             </div>
             <div
@@ -266,7 +288,7 @@ export function SettingsPanel({ visible, prefs, onToggle, onResetPrefs, onClose 
             <div className="settings-toggle-info">
               <span className="settings-toggle-label">Location</span>
               <span className="settings-toggle-desc">
-                Allow Samuel to look up your approximate location (city-level, IP-based) for "where am I", weather, and locale-specific help
+                Allow Husky to look up your approximate location (city-level, IP-based) for "where am I", weather, and locale-specific help
               </span>
             </div>
             <div
@@ -289,7 +311,7 @@ export function SettingsPanel({ visible, prefs, onToggle, onResetPrefs, onClose 
           <button className="settings-btn" onClick={() => exportData(false)} disabled={exporting || clearing !== null}>
             {exporting ? "Exporting…" : "Export Data…"}
           </button>
-          <span className="settings-btn-desc">Save everything Samuel stores about you to a JSON file (excludes API keys)</span>
+          <span className="settings-btn-desc">Save everything Husky stores about you to a JSON file (excludes API keys)</span>
 
           <button
             className="settings-btn settings-btn-subtle"
@@ -309,7 +331,7 @@ export function SettingsPanel({ visible, prefs, onToggle, onResetPrefs, onClose 
           <button className="settings-btn" onClick={clearMemory} disabled={clearing !== null}>
             {clearing === "memory" ? "Clearing..." : "Clear Memory"}
           </button>
-          <span className="settings-btn-desc">Erase Samuel's remembered preferences, vocabulary, and corrections</span>
+          <span className="settings-btn-desc">Erase Husky's remembered preferences, vocabulary, and corrections</span>
 
           <button className="settings-btn" onClick={clearSecrets} disabled={clearing !== null}>
             {clearing === "secrets" ? "Clearing..." : "Clear API Keys"}

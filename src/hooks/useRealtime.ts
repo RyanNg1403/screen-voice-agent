@@ -437,6 +437,7 @@ export interface UseRealtimeReturn {
   transcript: TranscriptEntry[];
   agentState: "idle" | "listening" | "thinking" | "speaking";
   screenTarget: string | null;
+  screenObserving: boolean;
   connect: () => Promise<void>;
   disconnect: () => void;
   mute: (muted: boolean) => void;
@@ -515,6 +516,10 @@ export function useRealtime(): UseRealtimeReturn {
   >("idle");
   const [isMuted, setIsMuted] = useState(false);
   const [screenTarget, setScreenTarget] = useState<string | null>(null);
+  // Reactive mirror of screenObservationModeRef so the UI can show a truthful
+  // persistent "observing" indicator. The ref is the source of truth for the
+  // pump; this state exists purely to re-render the indicator on mode changes.
+  const [screenObserving, setScreenObserving] = useState(false);
   const screenTargetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Mirror live session state into the bridge runtime snapshot so the
@@ -1257,6 +1262,7 @@ export function useRealtime(): UseRealtimeReturn {
     // (much cheaper than the multi-app dump).
     registerSetScreenObservation((mode, opts) => {
       screenObservationModeRef.current = mode;
+      setScreenObserving(mode === "continuous");
       const reason = opts?.reason;
       const app = opts?.app?.trim() || null;
       if (mode === "continuous") {
@@ -2366,50 +2372,107 @@ export function useRealtime(): UseRealtimeReturn {
     }
 
     try {
-      // Use prefetched key if available, otherwise fetch with a 10s timeout
-      let keyPromise = prefetchedKeyRef.current || invoke<string>("create_ephemeral_key");
-      prefetchedKeyRef.current = null;
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Ephemeral key request timed out")), 10_000),
+      // ── Start independent, latency-adding side tasks IN PARALLEL with the key
+      // fetch + handshake below, instead of running them serially afterward.
+      // Neither changes WHAT we send — they only start earlier so they're ready
+      // when needed, shaving avoidable serial time before first audio.
+
+      // (B) Mic stream — needed only at session.connect(). Reuse a cached LIVE
+      // stream; otherwise acquire a fresh AEC stream. Acquiring here overlaps
+      // getUserMedia (the slower side task) with the key fetch instead of adding
+      // it serially right before connect. Refresh when absent or the tracks were
+      // ended by a prior session.close() — reusing a dead stream makes every
+      // 2nd+ connect deaf (no speech_started) until a restart. The audio
+      // constraints (AEC + noise suppression + auto-gain) are unchanged.
+      const micReadyPromise: Promise<MediaStream | undefined> = (async () => {
+        const cached = micStreamRef.current ? await micStreamRef.current : undefined;
+        const live = !!cached && cached.getAudioTracks().some((t) => t.readyState === "live");
+        if (live) return cached;
+        const fresh = navigator.mediaDevices
+          .getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          })
+          .catch((e) => {
+            console.warn("[session] mic request failed, will use SDK default:", e);
+            return undefined;
+          });
+        micStreamRef.current = fresh;
+        return fresh;
+      })();
+
+      // (A) Saved-skill summaries are bundled into the greeting message below.
+      // Reading them off disk here (in parallel) keeps that read off the critical
+      // path so the greeting isn't gated on it. Identical payload, earlier start.
+      const skillSummariesPromise = invoke<
+        Array<{ id: string; title: string; trigger: string; summary: string }>
+      >("skill_list_summaries").catch(
+        () => [] as Array<{ id: string; title: string; trigger: string; summary: string }>,
       );
+
+      // Fetch the ephemeral key with a per-attempt timeout and a REAL retry.
+      // Cold starts (first connect after launch, cold DNS/TLS) can run past a
+      // single short timeout. The old code created ONE 10s timer and reused it
+      // for the "retry" — so once it fired, the retry raced an already-rejected
+      // promise and died instantly, turning a slow cold start into a hard fail.
+      // Each attempt now gets its own fresh timer (and 20s of headroom), so a
+      // slow first attempt genuinely falls through to a second one.
+      const KEY_TIMEOUT_MS = 20_000;
+      const fetchKeyWithTimeout = (p: Promise<string>): Promise<string> => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("Ephemeral key request timed out")),
+            KEY_TIMEOUT_MS,
+          );
+        });
+        return Promise.race([p, timeout]).finally(() => {
+          if (timer) clearTimeout(timer);
+        });
+      };
+
+      const firstAttempt = prefetchedKeyRef.current || invoke<string>("create_ephemeral_key");
+      prefetchedKeyRef.current = null;
       let ephemeralKey: string;
       try {
-        ephemeralKey = await Promise.race([keyPromise, timeout]);
+        ephemeralKey = await fetchKeyWithTimeout(firstAttempt);
       } catch (firstErr) {
         console.warn("[session] first key attempt failed, retrying:", firstErr);
-        keyPromise = invoke<string>("create_ephemeral_key");
-        ephemeralKey = await Promise.race([keyPromise, timeout]);
+        ephemeralKey = await fetchKeyWithTimeout(invoke<string>("create_ephemeral_key"));
       }
       // Log the session config that will be sent to verify voice
       const initConfig = await session.getInitialSessionConfig();
       console.log(`[session] initial config voice: ${(initConfig as Record<string, unknown>).voice ?? "NOT SET"}`, JSON.stringify(initConfig));
 
-      // Inject AEC-enabled mic stream before connecting.
-      // The SDK reads transport.options.mediaStream during connect().
-      // Refresh the stream when it's absent or its tracks were ended by a
-      // prior session.close(): reusing a dead stream makes every 2nd+ connect
-      // deaf (no speech_started) until a full app restart re-acquires it.
-      const cachedStream = micStreamRef.current ? await micStreamRef.current : undefined;
-      const micLive = !!cachedStream && cachedStream.getAudioTracks().some((t) => t.readyState === "live");
-      if (!micLive) {
-        micStreamRef.current = navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        }).catch((e) => {
-          console.warn("[session] mic request failed, will use SDK default:", e);
-          return undefined;
-        });
+      // Attach the now-ready AEC mic stream before connecting. The SDK reads
+      // transport.options.mediaStream during connect(). Acquisition was kicked
+      // off at the top of connect() (in parallel with the key fetch above), so by
+      // here it's typically already resolved.
+      //
+      // Re-check liveness RIGHT BEFORE attaching. The early check inside
+      // micReadyPromise runs just after session.close() (above), which ends the
+      // prior custom stream's tracks ASYNCHRONOUSLY — so the early check can still
+      // see them "live" and reuse a stream that's dead by connect() time (the
+      // classic 2nd-connect deafness). The old serial code dodged this because its
+      // single liveness check ran only after the key fetch, by which point close()
+      // had finished. We preserve that guarantee with a late re-check: the key
+      // fetch + config await have now elapsed, so if the tracks died, reacquire.
+      let aecStream = await micReadyPromise;
+      if (aecStream && !aecStream.getAudioTracks().some((t) => t.readyState === "live")) {
+        console.warn("[session] mic stream went dead before connect — reacquiring");
+        aecStream = await navigator.mediaDevices
+          .getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          })
+          .catch((e) => {
+            console.warn("[session] mic reacquire failed, will use SDK default:", e);
+            return undefined;
+          });
+        micStreamRef.current = aecStream ? Promise.resolve(aecStream) : null;
       }
-      if (micStreamRef.current) {
-        const aecStream = await micStreamRef.current;
-        if (aecStream) {
-          const t = session.transport as unknown as { options: { mediaStream?: MediaStream } };
-          t.options.mediaStream = aecStream;
-          console.log("[session] using AEC-enabled mic stream (echoCancellation + noiseSuppression)");
-        }
+      if (aecStream) {
+        const t = session.transport as unknown as { options: { mediaStream?: MediaStream } };
+        t.options.mediaStream = aecStream;
+        console.log("[session] using AEC-enabled mic stream (echoCancellation + noiseSuppression)");
       }
 
       await session.connect({ apiKey: ephemeralKey });
@@ -2474,7 +2537,7 @@ export function useRealtime(): UseRealtimeReturn {
         // so backticks, brackets, or accidental newlines can't break the surrounding markup.
         const sanitizeForInline = (s: string) =>
           s.replace(/[\r\n]+/g, " ").replace(/[`\[\]]/g, "").trim();
-        invoke<Array<{ id: string; title: string; trigger: string; summary: string }>>("skill_list_summaries")
+        skillSummariesPromise
           .then((skills) => {
             let fullCtx = timeCtx;
             if (skills.length > 0) {
@@ -2563,6 +2626,7 @@ export function useRealtime(): UseRealtimeReturn {
       screenObservationTimerRef.current = null;
     }
     screenObservationModeRef.current = "on_demand";
+    setScreenObserving(false);
     screenObservationAppRef.current = null;
     lastContinuousAxHashRef.current = "";
     lastContinuousAxLengthRef.current = 0;
@@ -2692,16 +2756,22 @@ export function useRealtime(): UseRealtimeReturn {
   }, []);
 
   const sendText = useCallback((text: string) => {
-    if (!text.trim()) return;
     const trimmed = text.trim();
+    if (!trimmed || !sessionRef.current) return;
+    // If the model is mid-response, interrupt it so this new turn is heard
+    // rather than silently dropped. The coach panel's controls (Done / Why? /
+    // …) and text input both route here, so a click while Husky is speaking
+    // must not no-op after we've already echoed the user's message.
+    if (responseInProgressRef.current) {
+      try { sessionRef.current.interrupt(); } catch { /* already settled */ }
+      responseInProgressRef.current = false;
+    }
     setTranscript((prev) => [...prev, makeEntry("user", trimmed)]);
     recordTurn("user", trimmed);
-    if (!sessionRef.current) return;
-    if (responseInProgressRef.current) {
-      console.log("[session] skipping sendText — model is busy");
-      return;
-    }
-    sessionRef.current.sendMessage(text);
+    // Typed/clicked turns have no speech_stopped event to flip the panel into
+    // "thinking" — set it optimistically so the request shows immediate feedback.
+    setAgentState("thinking");
+    sessionRef.current.sendMessage(trimmed);
   }, [recordTurn]);
 
   return {
@@ -2709,6 +2779,7 @@ export function useRealtime(): UseRealtimeReturn {
     transcript,
     agentState,
     screenTarget,
+    screenObserving,
     connect,
     disconnect,
     mute,
