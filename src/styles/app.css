@@ -2590,3 +2590,171 @@ html, body, #root {
   padding: 18px 20px;
   overflow-y: auto;
 }
+
+/* ── Group B tutoring progress strip ─────────────────────── */
+.tutor-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px 18px 14px;
+  border-top: 1px solid var(--c-line, rgba(255, 255, 255, 0.06));
+  color: var(--c-ink-dim, #98a2b0);
+  -webkit-app-region: no-drag;
+}
+.tutor-progress-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.tutor-progress-kicker,
+.session-report-kicker {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-ink-faint, #687280);
+}
+.tutor-progress-main strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--c-ink, #eef1f4);
+  font-size: 13px;
+  font-weight: 600;
+}
+.tutor-progress-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+}
+.tutor-progress-metrics span {
+  border: 1px solid var(--c-line, rgba(255, 255, 255, 0.06));
+  border-radius: 999px;
+  padding: 2px 9px;
+  background: var(--c-inset, #16171a);
+  color: var(--c-ink-dim, #98a2b0);
+  white-space: nowrap;
+}
+.tutor-progress-skills {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(14px, 1fr));
+  gap: 5px;
+}
+.tutor-progress-skill {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--c-line-strong, rgba(255, 255, 255, 0.12));
+}
+.tutor-progress-skill[data-status="attempted"] {
+  background: rgba(116, 174, 214, 0.4);
+}
+.tutor-progress-skill[data-status="demonstrated"] {
+  background: var(--c-accent, #74aed6);
+}
+
+/* ── End-of-session report sheet ─────────────────────────── */
+.session-report {
+  position: fixed;
+  inset: auto 12px 12px 12px;
+  z-index: 450;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  max-height: min(72vh, 520px);
+  overflow-y: auto;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--c-line-strong, rgba(255, 255, 255, 0.12));
+  background: var(--c-bg, #1a1d23);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.45);
+  color: var(--c-ink, #eef1f4);
+  -webkit-app-region: no-drag;
+}
+.session-report-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.session-report-header h2 {
+  margin: 3px 0 0;
+  font-size: 16px;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--c-ink, #eef1f4);
+}
+.session-report-header button {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--c-line, rgba(255, 255, 255, 0.06));
+  border-radius: 9px;
+  background: transparent;
+  color: var(--c-ink-dim, #98a2b0);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.session-report-header button:hover,
+.session-report-header button:focus-visible {
+  color: var(--c-ink, #eef1f4);
+  border-color: rgba(116, 174, 214, 0.45);
+  outline: none;
+}
+.session-report-outcome {
+  margin: 0;
+  color: var(--c-ink, #eef1f4);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.session-report-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.session-report-stats div {
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: var(--c-soft, #232830);
+  border: 1px solid var(--c-line, rgba(255, 255, 255, 0.06));
+}
+.session-report-stats dt,
+.session-report-section h3 {
+  margin: 0 0 4px;
+  color: var(--c-ink-faint, #687280);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.session-report-stats dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--c-ink, #eef1f4);
+  font-size: 14px;
+  font-weight: 600;
+}
+.session-report-section p {
+  margin: 0;
+  color: var(--c-ink-dim, #98a2b0);
+  font-size: 12.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+@media (max-height: 520px) {
+  .tutor-progress {
+    padding-bottom: 10px;
+  }
+  .tutor-progress-metrics span:nth-child(n + 3) {
+    display: none;
+  }
+  .session-report {
+    max-height: calc(100vh - 24px);
+  }
+}

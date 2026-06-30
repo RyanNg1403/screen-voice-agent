@@ -9,13 +9,17 @@ import { useLearningMode } from "./hooks/useLearningMode";
 import { useAudioBuffer } from "./hooks/useAudioBuffer";
 import { useWatcherLoop } from "./hooks/useWatcherLoop";
 import { useUIPreferences } from "./hooks/useUIPreferences";
+import { buildSessionReport, useLessonState, type SessionReportData } from "./hooks/useLessonState";
 import { playChime, playSleep } from "./lib/sounds";
 import { StatusBar } from "./components/StatusBar";
 import { CoachPanel } from "./components/CoachPanel";
+import { ProgressView } from "./components/ProgressView";
+import { SessionReport } from "./components/SessionReport";
 import { ToolApprovalCard } from "./components/ToolApprovalCard";
 import { PluginApproval } from "./components/PluginApproval";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { registerUIUpdate, setVolume, setScreenObservation } from "./lib/session-bridge";
+import { registerUIUpdate, setVolume, setScreenObservation, registerTutorMove } from "./lib/session-bridge";
+import type { TutorMove } from "./lib/tutor-types";
 
 export default function App() {
   const {
@@ -41,11 +45,28 @@ export default function App() {
 
   const record = useRecordMode();
   const ui = useUIPreferences();
+  const {
+    lessonState,
+    recordTutorMove,
+    recordSessionEvent,
+    resetLesson,
+  } = useLessonState();
+  const [sessionReport, setSessionReport] = useState<SessionReportData | null>(null);
+  // Code-enforced de-dup: a proactive nudge is logged here AND delivered to the
+  // model. If the model also calls record_tutor_move for the same nudge (despite
+  // being told not to), the registerTutorMove effect below drops that echo so
+  // hints/competencies aren't double-counted.
+  const recentProactiveRef = useRef<{ text: string; at: number } | null>(null);
+  const handleProactiveMove = useCallback((move: TutorMove) => {
+    recentProactiveRef.current = { text: normalizeMoveText(move.text), at: Date.now() };
+    recordTutorMove(move);
+  }, [recordTutorMove]);
   const learning = useLearningMode(
     status,
     agentState,
     ui.prefs["privacy.screen_watch"] as boolean,
     ui.prefs["privacy.audio_listen"] as boolean,
+    handleProactiveMove,
   );
 
   // Ambient audio buffer — the pull-model "I've been listening, ask me
@@ -66,6 +87,7 @@ export default function App() {
     learning.learningActive,
     ui.prefs["privacy.screen_watch"] as boolean,
     ui.prefs["privacy.audio_listen"] as boolean,
+    handleProactiveMove,
   );
 
   // When Proactive Screen Watch permission is granted, default screen
@@ -90,6 +112,21 @@ export default function App() {
   const [awaitingWake, setAwaitingWake] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  // In-panel quit (third quit path alongside ⌘Q and the menu-bar item). The
+  // button sits next to Hide in a tight icon row, so it's a two-step confirm:
+  // the first click arms it for 3s, a second click within that window quits.
+  const [quitArmed, setQuitArmed] = useState(false);
+  const quitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleQuit = useCallback(() => {
+    if (quitArmed) {
+      if (quitTimerRef.current) clearTimeout(quitTimerRef.current);
+      getCurrentWindow().quit();
+      return;
+    }
+    setQuitArmed(true);
+    quitTimerRef.current = setTimeout(() => setQuitArmed(false), 3000);
+  }, [quitArmed]);
+
   // OFF → ON requires explicit consent: we surface a native macOS-style
   // dialog ("Samuel would like to access …") and only persist the new
   // value if the user clicks Allow. ON → OFF is unconditional — turning
@@ -102,6 +139,7 @@ export default function App() {
     | "privacy.audio_record"
     | "privacy.screen_read"
     | "privacy.voice_input"
+    | "privacy.wake_word"
     | "privacy.computer_use"
     | "privacy.bypass_approvals"
     | "privacy.local_time"
@@ -109,9 +147,11 @@ export default function App() {
   ) => {
     const current = ui.prefs[key];
     const prop = key.split(".")[1];
-    // bypass_approvals is an app-behavior toggle, not an OS capability, so it
-    // skips the macOS consent dialog. All other OFF->ON transitions request it.
-    if (!current && key !== "privacy.bypass_approvals") {
+    // bypass_approvals and wake_word are app-behavior toggles, not new OS
+    // capabilities (wake word reuses the mic already granted via Voice Input),
+    // so they skip the macOS consent dialog. All other OFF->ON transitions
+    // request it.
+    if (!current && key !== "privacy.bypass_approvals" && key !== "privacy.wake_word") {
       const { allowed } = await invoke<{ allowed: boolean }>(
         "request_privacy_consent",
         { key },
@@ -127,6 +167,12 @@ export default function App() {
   // flips back. The mic button (rendered below) is disabled in this state so
   // it can't fight the gate. Wake-word capture is also gated on this flag.
   const voiceInputAllowed = ui.prefs["privacy.voice_input"] !== false;
+  // Opt-in hands-free start. Default OFF, so an asleep Husky keeps the mic
+  // closed (no wake-word recording/uploads) until the user explicitly starts.
+  const wakeWordEnabled = ui.prefs["privacy.wake_word"] === true;
+  // Whether the wake-word loop is actually live right now (drives the honest
+  // "Asleep" vs "Listening for wake word" status, and gates useWakeWord below).
+  const wakeListening = awaitingWake && voiceInputAllowed && wakeWordEnabled;
   useEffect(() => {
     if (!voiceInputAllowed && !isMuted) {
       mute(true);
@@ -143,6 +189,24 @@ export default function App() {
     return () => registerUIUpdate(null);
   }, [ui.applyUpdate]);
 
+  // FR-7: on-demand TutorMoves from the record_tutor_move tool feed the same
+  // lesson-state reducer as proactive moves, so the progress strip advances
+  // from real guidance — the key Group A ↔ Group B integration.
+  useEffect(() => {
+    registerTutorMove((move) => {
+      const recent = recentProactiveRef.current;
+      if (
+        recent &&
+        Date.now() - recent.at < 12_000 &&
+        isProactiveEcho(normalizeMoveText(move.text), recent.text)
+      ) {
+        return; // already logged as a proactive nudge — drop the duplicate echo
+      }
+      recordTutorMove(move);
+    });
+    return () => registerTutorMove(null);
+  }, [recordTutorMove]);
+
   // Keep the session alive during recording and while viewing results
   useEffect(() => {
     const active = record.recordingState !== "idle";
@@ -156,6 +220,17 @@ export default function App() {
   // Wake word detected — connect (if needed) then unmute
   const handleWakeDetected = useCallback(async () => {
     if (connectingRef.current) return;
+    // Privacy kill-switch. connect() acquires the mic, so with Voice Input OFF we
+    // must NOT start a session here — otherwise the in-panel Start button (and the
+    // wake path) would grab the mic despite the toggle. The hotkey path already
+    // guards this; gating here closes the button bypass. Send the user to Settings
+    // to enable Voice Input (which runs the native mic-consent flow) instead.
+    if (!voiceInputAllowed) {
+      setSettingsOpen(true);
+      return;
+    }
+    setSessionReport(null);
+    resetLesson();
     playChime();
     setAwaitingWake(false);
     sessionActiveAtRef.current = Date.now();
@@ -172,12 +247,13 @@ export default function App() {
         connectingRef.current = false;
       }
     }
-  }, [status, connect, mute, setWakeWordMode, prefetchKey]);
+  }, [status, connect, mute, setWakeWordMode, prefetchKey, resetLesson, voiceInputAllowed]);
 
   // Run post-session feedback extraction when going to sleep (non-blocking)
   const extractFeedback = useCallback(() => {
-    const entries = transcript
-      .filter((t) => t.role === "user" || t.role === "assistant")
+    const spokenEntries = transcript
+      .filter((t) => t.role === "user" || t.role === "assistant");
+    const entries = spokenEntries
       .slice(-20)
       .map((t) => `${t.role}: ${t.text}`)
       .join("\n");
@@ -186,7 +262,14 @@ export default function App() {
     if (entries.length > 8) {
       invoke("extract_session_feedback", { transcript: entries }).catch(() => {});
     }
-  }, [transcript]);
+    if (spokenEntries.length > 0 || lessonState.events.length > 0) {
+      setSessionReport(buildSessionReport({
+        lessonState,
+        transcript,
+        endedAt: Date.now(),
+      }));
+    }
+  }, [transcript, lessonState]);
 
   // Auto-sleep when the agent has been idle for IDLE_SLEEP_DELAY_MS. We wait
   // a generous chunk of time before flipping back to wake-word mode so the
@@ -218,11 +301,13 @@ export default function App() {
   }, [agentState, status, awaitingWake, record.recordingState, mute, extractFeedback]);
 
   useWakeWord({
-    // Gate wake-word capture on Voice Input privacy: when audio is privacy-
-    // disabled, we must not run the local mic listener either, otherwise the
-    // user's voice still reaches our process even though the realtime
-    // session is muted.
-    enabled: awaitingWake && voiceInputAllowed,
+    // Gate wake-word capture on BOTH Voice Input privacy AND the opt-in
+    // Wake Word toggle (default off). Without the wake-word opt-in, an asleep
+    // Husky must not open the mic or upload clips for transcription — the user
+    // starts explicitly with the button or ⌃⌥Space. (Voice-input-off is still a
+    // hard kill-switch: the local mic listener never runs when audio is
+    // privacy-disabled, even with wake word on.)
+    enabled: wakeListening,
     onDetected: handleWakeDetected,
   });
 
@@ -232,6 +317,11 @@ export default function App() {
     setWakeWordMode(false);
     disconnect();
   }, [disconnect, setWakeWordMode, extractFeedback]);
+
+  const handleSendText = useCallback((text: string) => {
+    recordSessionEvent("user_prompt", text);
+    sendText(text);
+  }, [recordSessionEvent, sendText]);
 
   // Global "talk" hotkey (Control+Option+Space): toggle the conversation
   // without needing the panel open. Asleep -> wake & start listening; active
@@ -285,6 +375,7 @@ export default function App() {
             agentState={agentState}
             status={status}
             awaitingWake={awaitingWake}
+            wakeListening={wakeListening}
           />
           {/* Full controls only when connected and active */}
           {status === "connected" && !awaitingWake && (
@@ -337,6 +428,22 @@ export default function App() {
           >
             <HideIcon />
           </button>
+
+          {/* Quit Husky entirely — also available via ⌘Q and the menu-bar icon.
+              Two-step: first click arms, second click within 3s quits. */}
+          <button
+            onClick={handleQuit}
+            onBlur={() => setQuitArmed(false)}
+            className={`rounded-full p-2 transition-colors ${
+              quitArmed
+                ? "bg-red-600/80 text-white"
+                : "bg-white/10 text-slate-400 hover:text-red-300"
+            }`}
+            title={quitArmed ? "Click again to quit Husky" : "Quit Husky"}
+            aria-label={quitArmed ? "Click again to quit Husky" : "Quit Husky"}
+          >
+            <PowerIcon />
+          </button>
         </div>
       </div>
       )}
@@ -351,6 +458,7 @@ export default function App() {
           onClose={() => setSettingsOpen(false)}
         />
       ) : (
+        <>
         <CoachPanel
           status={status}
           agentState={agentState}
@@ -358,9 +466,11 @@ export default function App() {
           screenTarget={screenTarget}
           watching={screenObserving}
           transcript={transcript}
-          onSend={sendText}
+          onSend={handleSendText}
           onWake={handleWakeDetected}
         />
+        <ProgressView lessonState={lessonState} />
+        </>
       )}
 
       {/* Tool-approval cards live OUTSIDE the page swap so a pending approval
@@ -387,9 +497,29 @@ export default function App() {
         );
       })()}
 
+      {!settingsOpen && sessionReport && (
+        <SessionReport
+          report={sessionReport}
+          onDismiss={() => setSessionReport(null)}
+        />
+      )}
+
       <PluginApproval />
     </div>
   );
+}
+
+function normalizeMoveText(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+// True when an on-demand move looks like an echo of a just-fired proactive
+// nudge (same text, or one is a prefix of the other) — used to drop duplicates.
+function isProactiveEcho(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const head = (s: string) => s.slice(0, 40);
+  return a.includes(head(b)) || b.includes(head(a));
 }
 
 function MicIcon() {
@@ -439,6 +569,16 @@ function HideIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function PowerIcon() {
+  // Power symbol — "quit Husky"
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2v10" />
+      <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
     </svg>
   );
 }

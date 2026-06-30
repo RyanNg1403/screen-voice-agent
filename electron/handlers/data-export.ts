@@ -96,7 +96,7 @@ export async function data_export(args: ExportArgs = {}): Promise<{
 		app: "samuel",
 		version: 1,
 		notes: [
-			"This file contains every piece of data the Samuel app stored locally about you.",
+			"This file contains every piece of data the Husky app stored locally about you.",
 			`Source directory: ${samuelDir}`,
 			"Re-importing is not supported in v1 — this export is for inspection, backup, or moving to a different tool.",
 		],
@@ -136,15 +136,15 @@ export async function data_export(args: ExportArgs = {}): Promise<{
 	}
 
 	const win = getWindowRef();
-	const defaultName = `samuel-data-${new Date().toISOString().slice(0, 10)}.json`;
+	const defaultName = `husky-data-${new Date().toISOString().slice(0, 10)}.json`;
 	const result = win
 		? await dialog.showSaveDialog(win, {
-				title: "Export Samuel data",
+				title: "Export Husky data",
 				defaultPath: defaultName,
 				filters: [{ name: "JSON", extensions: ["json"] }],
 			})
 		: await dialog.showSaveDialog({
-				title: "Export Samuel data",
+				title: "Export Husky data",
 				defaultPath: defaultName,
 				filters: [{ name: "JSON", extensions: ["json"] }],
 			});

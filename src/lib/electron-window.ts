@@ -4,6 +4,7 @@ declare global {
       setSize: (width: number, height: number) => void;
       hide: () => void;
       show: () => void;
+      quit: () => void;
     };
   }
 }
@@ -26,6 +27,9 @@ class ElectronWindow {
   }
   show() {
     window.__electronWindow?.show();
+  }
+  quit() {
+    window.__electronWindow?.quit();
   }
 }
 

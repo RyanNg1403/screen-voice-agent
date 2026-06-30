@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "../lib/invoke-bridge";
-import { registerLearningLanguage, sendSilentContext } from "../lib/session-bridge";
+import {
+  registerLearningLanguage,
+  sendSilentContext,
+} from "../lib/session-bridge";
+import { createProactiveRunnerState, runProactiveTick } from "../lib/proactive-runner";
 import { runWatchEvaluation } from "../lib/watcher-eval";
+import type { TutorMove } from "../lib/tutor-types";
 import type { ConnectionStatus } from "./useRealtime";
 
 const STORAGE_KEY = "samuel-learning-language";
@@ -24,6 +29,7 @@ export function useLearningMode(
   agentState?: "idle" | "listening" | "thinking" | "speaking",
   screenWatchEnabled = true,
   audioListenEnabled = true,
+  onProactiveMove?: (move: TutorMove) => void,
 ): UseLearningModeReturn {
   const agentStateRef = useRef(agentState);
   agentStateRef.current = agentState;
@@ -31,6 +37,9 @@ export function useLearningMode(
   screenWatchRef.current = screenWatchEnabled;
   const audioListenRef = useRef(audioListenEnabled);
   audioListenRef.current = audioListenEnabled;
+  const onProactiveMoveRef = useRef(onProactiveMove);
+  onProactiveMoveRef.current = onProactiveMove;
+  const proactiveRunnerRef = useRef(createProactiveRunnerState());
 
   const [language, setLanguage] = useState<string | null>(
     () => localStorage.getItem(STORAGE_KEY) || null,
@@ -159,6 +168,15 @@ export function useLearningMode(
         // prevent false positives from English audio being classified as Japanese.
         const audioText = (audioResult.transcript && audioResult.hint) ? audioResult.transcript : "";
         const screenText = screenHint && !screenHint.startsWith("NONE") ? screenHint : "";
+
+        // Proactive Codex tutoring reads the GENERIC screen (check_screen_text
+        // via the runner), NOT the language-learning hint above — otherwise a
+        // persisted learning language would route tutoring through the wrong
+        // source. The runner shares the watcher's logic + cached persistence.
+        const onMove = onProactiveMoveRef.current;
+        if (onMove && screenWatchRef.current) {
+          proactiveRunnerRef.current = await runProactiveTick(proactiveRunnerRef.current, onMove);
+        }
 
         const { triggerCount } = await runWatchEvaluation({ audioText, screenText });
         if (triggerCount > 0) {
