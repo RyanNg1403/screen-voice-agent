@@ -1,12 +1,6 @@
 import { useEffect, useRef } from "react";
 import { invoke } from "../lib/invoke-bridge";
-import {
-  createProactiveTutorState,
-  evaluateProactiveTutor,
-  formatProactiveMovePrompt,
-  inferScreenStateFromWatcherText,
-} from "../lib/proactive-tutor";
-import { sendTextAndRespond } from "../lib/session-bridge";
+import { createProactiveRunnerState, runProactiveTick, type ScreenRead } from "../lib/proactive-runner";
 import { runWatchEvaluation, type WatchAlert } from "../lib/watcher-eval";
 import type { TutorMove } from "../lib/tutor-types";
 import type { ConnectionStatus } from "./useRealtime";
@@ -48,7 +42,7 @@ export function useWatcherLoop(
   const inFlightRef = useRef(false);
   const onProactiveMoveRef = useRef(onProactiveMove);
   onProactiveMoveRef.current = onProactiveMove;
-  const proactiveStateRef = useRef(createProactiveTutorState());
+  const proactiveRunnerRef = useRef(createProactiveRunnerState());
   // Tracks whether we currently hold the watcher-side slot of the shared
   // audio capture. Used to decide when to acquire/release per tick.
   const audioHeldRef = useRef(false);
@@ -109,24 +103,26 @@ export function useWatcherLoop(
       inFlightRef.current = true;
 
       try {
-        // Screen content: capture and describe via GPT-4o-mini
-        let screenText = "";
+        // Screen content: one gpt-4o-mini vision read → structured screen state.
+        let read: ScreenRead | null = null;
         if ((hasScreenTriggers || wantsProactiveScreen) && screenWatchRef.current) {
           try {
-            screenText = await invoke<string>("check_screen_text") ?? "";
+            read = await invoke<ScreenRead | null>("check_screen_text");
           } catch {
             // check_screen_text may not exist yet; fall back to nothing
           }
         }
+        const screenText = read?.summary ?? "";
 
-        if (wantsProactiveScreen && screenText.trim()) {
-          const screenState = inferScreenStateFromWatcherText(screenText, Date.now());
-          const result = evaluateProactiveTutor(screenState, proactiveStateRef.current);
-          proactiveStateRef.current = result.state;
-          if (result.move) {
-            onProactiveMoveRef.current?.(result.move);
-            sendTextAndRespond(formatProactiveMovePrompt(result.move, screenState));
-          }
+        const onMove = onProactiveMoveRef.current;
+        if (onMove && screenWatchRef.current) {
+          // Pass the already-fetched read (possibly null for an unchanged screen —
+          // the runner reuses its cached read so persistence accrues).
+          proactiveRunnerRef.current = await runProactiveTick(
+            proactiveRunnerRef.current,
+            onMove,
+            read,
+          );
         }
 
         // Audio content: language-agnostic chunk via the watcher-side check.

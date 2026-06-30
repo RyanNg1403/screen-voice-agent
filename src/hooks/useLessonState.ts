@@ -98,9 +98,13 @@ export function buildSessionReport({
   transcript: TranscriptEntry[];
   endedAt?: number;
 }): SessionReportData {
-  const demonstrated = Object.entries(lessonState.competencies)
+  const demonstratedIds = Object.entries(lessonState.competencies)
     .filter(([, status]) => status === "demonstrated")
-    .map(([id]) => formatCompetencyLabel(id));
+    .map(([id]) => id);
+  const attemptedIds = Object.entries(lessonState.competencies)
+    .filter(([, status]) => status === "attempted")
+    .map(([id]) => id);
+  const demonstrated = demonstratedIds.map((id) => formatCompetencyLabel(id));
   const concepts = extractConcepts(transcript, lessonState.events);
   const stageLabel = formatLearningStage(lessonState.stage);
   const primarySkill = demonstrated[0] ?? "the current workflow";
@@ -113,8 +117,7 @@ export function buildSessionReport({
     hintsNeeded: lessonState.hintsUsed,
     interventions: lessonState.interventions,
     conceptsEncountered: concepts,
-    transferablePrinciple:
-      "Keep the next action small enough that you can verify it before moving on.",
+    transferablePrinciple: principleFor(demonstratedIds[0] ?? attemptedIds[0]),
     nextFocus:
       lessonState.stage === "validate" || lessonState.stage === "transfer"
         ? "Transfer the verified workflow to the next similar task."
@@ -184,6 +187,25 @@ function extractConcepts(
     .map(([label]) => label);
 
   return found.length > 0 ? found : ["Workflow supervision"];
+}
+
+// The session's one transferable principle is tied to the skill the learner
+// actually exercised, so it reads as earned rather than a fixed motto.
+const PRINCIPLES: Record<string, string> = {
+  explain_workflow: "If you can describe the workflow in plain words, you can supervise it.",
+  give_codex_context: "The clearer and more specific your request, the closer the agent's first try lands.",
+  review_plan: "Read the agent's plan before it runs — approving blind is how surprises happen.",
+  debug_when_stuck: "When something breaks, narrow the cause down before asking for a fix.",
+  verify_behavior: "Check the result against what you expected before you move on.",
+  one_change_at_a_time: "Ask for one change at a time so you can tell what actually fixed it.",
+  spot_risk: "Pause on anything that deletes, deploys, or touches real data — read it before you approve.",
+};
+
+function principleFor(competency?: string): string {
+  return (
+    (competency && PRINCIPLES[competency]) ||
+    "Keep each step small enough that you can verify it before moving on."
+  );
 }
 
 function formatDuration(ms: number): string {

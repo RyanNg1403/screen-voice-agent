@@ -56,6 +56,11 @@ export function SessionReport({ report, onDismiss }: SessionReportProps) {
       </div>
 
       <div className="session-report-section">
+        <h3>Principle</h3>
+        <p>{report.transferablePrinciple}</p>
+      </div>
+
+      <div className="session-report-section">
         <h3>Next focus</h3>
         <p>{report.nextFocus}</p>
       </div>

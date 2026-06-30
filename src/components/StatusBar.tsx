@@ -2,14 +2,21 @@ interface StatusBarProps {
   agentState: "idle" | "listening" | "thinking" | "speaking";
   status: "disconnected" | "connecting" | "connected";
   awaitingWake?: boolean;
+  // True only when the opt-in wake-word loop is actually running (mic open,
+  // listening for the wake phrase). When asleep WITHOUT this, the mic is closed.
+  wakeListening?: boolean;
 }
 
-export function StatusBar({ agentState, status, awaitingWake }: StatusBarProps) {
+export function StatusBar({ agentState, status, awaitingWake, wakeListening }: StatusBarProps) {
   if (status === "connecting") {
     return <Pill color="bg-cyan-500" pulse label="Connecting..." />;
   }
   if (awaitingWake) {
-    return <Pill color="bg-violet-500" pulse label="Listening" />;
+    // Don't claim "Listening" when the mic is closed. Only the opt-in wake-word
+    // loop is genuinely listening; otherwise Husky is asleep until you start it.
+    return wakeListening
+      ? <Pill color="bg-violet-500" pulse label="Listening for wake word" />
+      : <Pill color="bg-slate-600" label="Asleep" />;
   }
   if (status === "disconnected") {
     return <Pill color="bg-slate-600" label="Offline" />;

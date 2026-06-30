@@ -16,6 +16,7 @@ import {
 } from "./memory.js";
 import { get_secret } from "./secrets.js";
 import { openaiFetch } from "./openai-client.js";
+import { getFrontmostAppName, isExcludedApp } from "./frontmost.js";
 
 // Sentinel prefix for "no SerpAPI key configured" — the web_browse tool layer
 // detects this and returns a structured missing_key error so the model can
@@ -179,19 +180,7 @@ function hashBytes(data: Buffer | Uint8Array): number {
 	return hash >>> 0;
 }
 
-function getFrontmostAppName(): string {
-	try {
-		return execFileSync("/usr/bin/osascript", [
-			"-e",
-			'tell application "System Events" to get name of first application process whose frontmost is true',
-		], { encoding: "utf-8" }).trim();
-	} catch {
-		return "";
-	}
-}
-
-const EXCLUDED_APPS = ["samuel", "cursor", "electron"];
-
+// getFrontmostAppName + EXCLUDED_APPS now come from frontmost.ts (shared).
 function getUserFacingApp(): string | null {
 	const script = `tell application "System Events"
   set appList to name of every application process whose visible is true
@@ -204,8 +193,7 @@ end tell`;
 		for (const name of raw.split(",")) {
 			const trimmed = name.trim();
 			if (!trimmed) continue;
-			const lower = trimmed.toLowerCase();
-			if (EXCLUDED_APPS.some((ex) => lower.includes(ex))) continue;
+			if (isExcludedApp(trimmed)) continue;
 			return trimmed;
 		}
 	} catch {
@@ -273,7 +261,19 @@ function captureFocusedWindowSync(): { base64: string; app_name: string } {
 
 	if (!peekabooOk) {
 		tryRemove(tmpPng);
-		const dFlag = `-D${displayIdx}`;
+		// Capture the display the TARGET app is actually on — not just the default
+		// display — so on a multi-monitor setup we don't screenshot the wrong screen
+		// (peekaboo, which crops to the app window, may be missing).
+		let targetDisplay = displayIdx;
+		if (target) {
+			try {
+				const { findDisplayForApp } = require("./capture.js") as { findDisplayForApp(app: string): number | null };
+				targetDisplay = findDisplayForApp(target) ?? displayIdx;
+			} catch {
+				// keep default display
+			}
+		}
+		const dFlag = `-D${targetDisplay}`;
 		execFileSync("/usr/sbin/screencapture", ["-x", dFlag, tmpPng]);
 	}
 
@@ -1430,7 +1430,18 @@ Respond NONE if: the screen is empty, a plain desktop, has only names, has only 
 	}
 }
 
-export async function check_screen_text(): Promise<string | null> {
+export interface WatcherScreenRead {
+	summary: string;
+	activity: "error" | "awaiting_approval" | "other";
+	signals: string[];
+	confidence: number;
+	// True when the visible action looks destructive/irreversible (deleting
+	// files, sudo, production data, credentials, broad permissions). Drives the
+	// proactive safety warning; the engine also OR's a keyword backstop.
+	risky: boolean;
+}
+
+export async function check_screen_text(): Promise<WatcherScreenRead | null> {
 	const capture = captureFocusedWindowSync();
 	const b64 = capture.base64;
 	if (b64.length < 100) return null;
@@ -1444,19 +1455,22 @@ export async function check_screen_text(): Promise<string | null> {
 	const recent = now - watcherScreenLastAnalysis < 90;
 	if (sameHash && sameApp && recent) return null;
 
-	watcherScreenLastHash = currentHash;
-	watcherScreenLastApp = currentApp;
-	watcherScreenLastAnalysis = now;
-
 	const requestBody = {
 		model: "gpt-4o-mini",
 		messages: [
 			{
 				role: "system",
 				content:
-					"Describe the visible text and key visual content on this screenshot in 2-3 sentences. " +
-					"Focus on readable text (titles, labels, subtitles, messages, code). " +
-					"Be factual and concise. If the screen is a plain desktop or has no meaningful content, say NONE.",
+					"You look at a screenshot of the user's frontmost window while they use an AI coding agent (Codex) or another app. " +
+					"Reply with ONLY a JSON object: " +
+					'{"summary": "<=2 sentence factual description of the readable content (titles, messages, code, errors)>", ' +
+					'"activity": "<error | awaiting_approval | other>", ' +
+					'"signals": ["short cue", ...], "confidence": <0..1>, "risky": <true|false>}. ' +
+					"activity — error: a visible error, failed test, stack trace, or broken output; " +
+					"awaiting_approval: a permission/approval/confirm dialog waiting for the user; " +
+					"other: anything else (idle, planning, editing, normal output). " +
+					"risky — true ONLY when the visible action looks destructive or irreversible: deleting/overwriting files, rm, sudo, formatting, force-push, dropping a database, touching production data, entering credentials/secrets, or granting broad permissions. Otherwise false. " +
+					"Be conservative with confidence when unsure. If the screen is a plain desktop or has no meaningful content, set activity \"other\" and summary \"NONE\".",
 			},
 			{
 				role: "user",
@@ -1472,7 +1486,8 @@ export async function check_screen_text(): Promise<string | null> {
 				],
 			},
 		],
-		max_tokens: 200,
+		max_tokens: 300,
+		response_format: { type: "json_object" },
 	};
 
 	const bodyPath = "/tmp/samuel-watcher-screen-req.json";
@@ -1492,11 +1507,49 @@ export async function check_screen_text(): Promise<string | null> {
 		const data = await resp.json();
 		if (data.error) return null;
 
-		const text = (data?.choices?.[0]?.message?.content ?? "NONE").trim();
-		console.error(`[watcher] screen text: ${truncateStr(text, 100)}`);
+		const content = (data?.choices?.[0]?.message?.content ?? "").trim();
+		console.error(`[watcher] screen read: ${truncateStr(content, 120)}`);
 
-		if (text === "NONE" || text.toUpperCase().startsWith("NONE")) return null;
-		return text;
+		// Mark this screen analyzed ONLY now that the model call succeeded —
+		// updating before the request would suppress retries of the SAME screen
+		// for ~90s after a transient failure (network/timeout/API error).
+		watcherScreenLastHash = currentHash;
+		watcherScreenLastApp = currentApp;
+		watcherScreenLastAnalysis = now;
+
+		let parsed: Record<string, unknown> = {};
+		try {
+			parsed = JSON.parse(content) as Record<string, unknown>;
+		} catch {
+			// Non-JSON fallback: treat the whole response as the summary so the
+			// watch-trigger path still works; activity defaults to "other".
+			parsed = { summary: content };
+		}
+
+		const summary = typeof parsed.summary === "string" ? parsed.summary.trim() : "";
+		// Blank / "NONE" screen: return an explicit "other" read (NOT null) so the
+		// proactive runner REPLACES any cached error/approval with a no-op state,
+		// instead of treating a stale error as still on screen. null is reserved
+		// for "unchanged" (dedup hit) and failures, where reusing the cache for
+		// persistence is the correct behavior.
+		if (!summary || summary.toUpperCase().startsWith("NONE")) {
+			return { summary: "", activity: "other", signals: [], confidence: 1, risky: false };
+		}
+
+		const activity =
+			parsed.activity === "error" || parsed.activity === "awaiting_approval"
+				? parsed.activity
+				: "other";
+		const signals = Array.isArray(parsed.signals)
+			? parsed.signals.filter((s): s is string => typeof s === "string").slice(0, 6)
+			: [];
+		const confidence =
+			typeof parsed.confidence === "number" ? Math.max(0, Math.min(1, parsed.confidence)) : 0.5;
+		// JSON mode guarantees valid JSON, not schema conformance — a sloppy reply
+		// like "risky":"true" must still warn (safety-critical: bias toward catching).
+		const risky = parsed.risky === true || parsed.risky === "true";
+
+		return { summary, activity, signals, confidence, risky };
 	} catch (err) {
 		tryRemove(bodyPath);
 		throw err;

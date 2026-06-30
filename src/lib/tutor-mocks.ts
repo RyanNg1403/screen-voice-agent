@@ -2,20 +2,18 @@ import type { ScreenState, TutorMove } from "./tutor-types";
 
 export const MOCK_SCREEN_STATES: readonly ScreenState[] = [
   {
-    activity: "planning",
-    appName: "Codex",
+    activity: "other",
     summary: "Codex is showing a short implementation plan.",
     signals: ["plan list", "pending user review"],
     confidence: 0.82,
-    capturedAt: 0,
+    risky: false,
   },
   {
     activity: "error",
-    appName: "Codex",
     summary: "A test failure and stack trace are visible in the terminal.",
     signals: ["failed test", "stack trace"],
     confidence: 0.88,
-    capturedAt: 0,
+    risky: false,
   },
 ];
 

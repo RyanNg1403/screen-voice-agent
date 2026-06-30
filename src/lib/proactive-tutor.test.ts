@@ -3,17 +3,15 @@ import test from "node:test";
 import {
   createProactiveTutorState,
   evaluateProactiveTutor,
-  inferScreenStateFromWatcherText,
 } from "./proactive-tutor";
 import type { ScreenState } from "./tutor-types";
 
 const baseScreen: ScreenState = {
   activity: "error",
-  appName: "Codex",
   summary: "Tests failed with a visible stack trace.",
   signals: ["stack trace", "failed test"],
   confidence: 0.86,
-  capturedAt: 10_000,
+  risky: false,
 };
 
 test("evaluateProactiveTutor waits for persistent errors before nudging", () => {
@@ -38,13 +36,14 @@ test("evaluateProactiveTutor waits for persistent errors before nudging", () => 
 });
 
 test("evaluateProactiveTutor warns immediately for risky approvals and respects cooldown", () => {
+  // risky:false here on purpose — the keyword backstop (looksRisky) must catch
+  // "rm -rf" even when the vision model didn't flag it.
   const approval: ScreenState = {
     activity: "awaiting_approval",
-    appName: "Codex",
     summary: "Codex is asking approval to run rm -rf on project files.",
     signals: ["approval dialog", "rm -rf", "delete files"],
     confidence: 0.91,
-    capturedAt: 40_000,
+    risky: false,
   };
 
   const first = evaluateProactiveTutor(approval, createProactiveTutorState(), {
@@ -66,6 +65,27 @@ test("evaluateProactiveTutor warns immediately for risky approvals and respects 
   assert.equal(duplicate.move, null);
 });
 
+test("evaluateProactiveTutor warns when the vision read flags risky, even with no risky keywords", () => {
+  // Summary/signals contain none of looksRisky's keywords — only the AI
+  // risky=true flag should drive the immediate warning.
+  const aiFlagged: ScreenState = {
+    activity: "awaiting_approval",
+    summary: "Codex wants approval to apply the proposed changes.",
+    signals: ["approval dialog"],
+    confidence: 0.9,
+    risky: true,
+  };
+
+  const result = evaluateProactiveTutor(aiFlagged, createProactiveTutorState(), {
+    now: 50_000,
+    persistenceMs: 15_000,
+    cooldownMs: 60_000,
+  });
+
+  assert.equal(result.move?.kind, "warn");
+  assert.equal(result.move?.source, "proactive");
+});
+
 test("evaluateProactiveTutor applies cooldown across changed error details", () => {
   const first = evaluateProactiveTutor(baseScreen, createProactiveTutorState(), {
     now: 26_000,
@@ -76,7 +96,6 @@ test("evaluateProactiveTutor applies cooldown across changed error details", () 
     ...baseScreen,
     summary: "Tests failed with a different assertion message.",
     signals: ["failed test", "assertion"],
-    capturedAt: 30_000,
   };
 
   const second = evaluateProactiveTutor(changedError, first.state, {
@@ -86,17 +105,4 @@ test("evaluateProactiveTutor applies cooldown across changed error details", () 
   });
 
   assert.equal(second.move, null);
-});
-
-test("inferScreenStateFromWatcherText maps common watcher text into ScreenState", () => {
-  const screen = inferScreenStateFromWatcherText(
-    "Codex shows a permission approval dialog for deleting files after tests failed.",
-    99_000,
-  );
-
-  assert.equal(screen.activity, "awaiting_approval");
-  assert.equal(screen.appName, "Codex");
-  assert.ok(screen.signals.includes("approval dialog"));
-  assert.ok(screen.signals.includes("error output"));
-  assert.ok(screen.confidence > 0.5);
 });

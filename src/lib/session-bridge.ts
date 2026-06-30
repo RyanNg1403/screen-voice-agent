@@ -15,9 +15,12 @@
  * only after the language-confusion problem is solved.
  */
 
+import type { TutorMove } from "./tutor-types";
+
 type SendImageFn = (base64Jpeg: string) => void;
 type SendTextFn = (text: string) => void;
 type ScreenTargetFn = (appName: string) => void;
+type TutorMoveFn = (move: TutorMove) => void;
 type RecordingActionFn = (action: "start" | "stop" | "processing" | "analyze" | "results" | "error", payload?: unknown) => void;
 type LearningLanguageFn = (language: string | null) => void;
 type SendSilentContextFn = (text: string) => void;
@@ -61,6 +64,7 @@ type AudioBufferStateFn = (active: boolean) => void;
 let sendImageFn: SendImageFn | null = null;
 let sendTextFn: SendTextFn | null = null;
 let screenTargetFn: ScreenTargetFn | null = null;
+let tutorMoveFn: TutorMoveFn | null = null;
 let recordingActionFn: RecordingActionFn | null = null;
 let learningLanguageFn: LearningLanguageFn | null = null;
 let sendSilentContextFn: SendSilentContextFn | null = null;
@@ -195,6 +199,23 @@ export function sendTextToSession(text: string): boolean {
 
 export function registerScreenTarget(fn: ScreenTargetFn | null) {
   screenTargetFn = fn;
+}
+
+/**
+ * The decision engine (FR-7) emits a structured TutorMove for each piece of
+ * on-demand guidance. The renderer feeds it into the lesson-state reducer
+ * (progress/competencies) and the coach panel. Proactive moves (FR-10) go
+ * through the watcher loop directly, not this bridge.
+ */
+export function registerTutorMove(fn: TutorMoveFn | null) {
+  tutorMoveFn = fn;
+}
+
+/** Emit an on-demand TutorMove from the `record_tutor_move` tool. */
+export function notifyTutorMove(move: TutorMove): boolean {
+  if (!tutorMoveFn) return false;
+  tutorMoveFn(move);
+  return true;
 }
 
 /**

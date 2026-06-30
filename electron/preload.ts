@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("__electronWindow", {
     ipcRenderer.invoke("window:setSize", width, height),
   hide: () => ipcRenderer.invoke("window:hide"),
   show: () => ipcRenderer.invoke("window:show"),
+  quit: () => ipcRenderer.invoke("app:quit"),
 });
 
 contextBridge.exposeInMainWorld("__electronConversation", {

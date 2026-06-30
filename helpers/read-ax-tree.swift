@@ -207,10 +207,29 @@ func readApp(_ appElement: AXUIElement, appName: String) -> String {
 }
 
 func findAppByName(_ name: String) -> (pid_t, String)? {
-    let workspace = NSWorkspace.shared
-    for app in workspace.runningApplications {
-        guard let appName = app.localizedName else { continue }
-        if appName.localizedCaseInsensitiveContains(name) {
+    let apps = NSWorkspace.shared.runningApplications
+    // 1. Exact display-name match on a REGULAR (Dock-visible) app. Prefer this so
+    //    "Ghostty" resolves to the real Ghostty app, never an accessory helper
+    //    process like "Dock Extra (Ghostty.app)" that substring-matches the name.
+    for app in apps where app.activationPolicy == .regular {
+        if let appName = app.localizedName,
+           appName.localizedCaseInsensitiveCompare(name) == .orderedSame {
+            return (app.processIdentifier, appName)
+        }
+    }
+    // 2. Substring match, but ONLY among regular apps — skips accessory /
+    //    Dock-Extra / agent processes that substring-match the same name.
+    for app in apps where app.activationPolicy == .regular {
+        if let appName = app.localizedName,
+           appName.localizedCaseInsensitiveContains(name) {
+            return (app.processIdentifier, appName)
+        }
+    }
+    // 3. Last resort: original any-app substring match, so a legitimate
+    //    non-regular target still resolves rather than failing outright.
+    for app in apps {
+        if let appName = app.localizedName,
+           appName.localizedCaseInsensitiveContains(name) {
             return (app.processIdentifier, appName)
         }
     }
